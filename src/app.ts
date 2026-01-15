@@ -1,26 +1,51 @@
-import express from 'express';
+import express, { Express } from 'express';
+import cors from 'cors';
+import { errorHandler } from '@/middleware/errorHandler';
+import logger from '@/config/logger';
 
-export const app = express();
+// Import routes
+import authRoutes from '@/modules/auth/auth.routes';
+// import businessRoutes from './modules/business/business.routes';
+// import styleRoutes from './modules/style/style.routes';
+// import signalsRoutes from './modules/signals/signals.routes';
+// import replyRoutes from './modules/ai-reply/reply.routes';
+// import whatsappRoutes from './modules/webhooks/whatsapp.routes';
 
-app.use(express.json());
+export function createApp(): Express {
+  const app = express();
 
-// Simple request logger to help debug why clients sometimes see unexpected responses
-app.use((req, _res, next) => {
-  console.log(`[HTTP] ${new Date().toISOString()} ${req.method} ${req.url}`);
-  next();
-});
+  // Middleware
+  app.use(cors());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true }));
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
-});
+  // Request logging
+  app.use((req, res, next) => {
+    logger.info('Incoming request', {
+      method: req.method,
+      path: req.path,
+      ip: req.ip,
+    });
+    next();
+  });
 
-// Ensure visiting the root returns the same health payload (avoids "Cannot GET /")
-app.get('/', (_req, res) => {
-  res.json({ status: 'ok' });
-});
+  // Health check
+  app.get('/health', (req, res) => {
+    res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+  });
 
-// Final 404 handler that logs unexpected requests (useful for debugging)
-app.use((_req, res) => {
-  res.status(404).send('Not found');
-});
+  // API Routes
+  const apiVersion = process.env.API_VERSION || 'v1';
+  app.use(`/api/${apiVersion}/auth`, authRoutes);
+  // app.use(`/api/${apiVersion}/business`, businessRoutes);
+  // app.use(`/api/${apiVersion}/style`, styleRoutes);
+  // app.use(`/api/${apiVersion}/signals`, signalsRoutes);
+  // app.use(`/api/${apiVersion}/replies`, replyRoutes);
+  // app.use(`/api/${apiVersion}/webhooks/whatsapp`, whatsappRoutes);
+
+  // Error handling (must be last)
+  app.use(errorHandler);
+
+  return app;
+}
 

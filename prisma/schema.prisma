@@ -1,0 +1,366 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// TENANT & USER MANAGEMENT
+// ============================================
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  status    TenantStatus @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users          User[]
+  business       Business?
+  styleProfile   StyleProfile?
+  contacts       Contact[]
+  auditLogs      AuditLog[]
+
+  @@map("tenants")
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("users")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// ============================================
+// BUSINESS KNOWLEDGE
+// ============================================
+
+model Business {
+  id              String   @id @default(uuid())
+  tenantId        String   @unique
+  businessType    String
+  description     String   @db.Text
+  pricingRanges   Json     // { "min": 50, "max": 500, "currency": "USD" }
+  primaryGoals    String[] // ["sell", "book", "support"]
+  constraints     Json?    // { "no_discounts": true, "max_reply_length": 200 }
+  allowedClaims   String[] // ["certified", "10 years experience"]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  faqs   FAQ[]
+
+  @@map("businesses")
+}
+
+model FAQ {
+  id              String   @id @default(uuid())
+  businessId      String
+  question        String   @db.Text
+  answer          String   @db.Text
+  tags            String[]
+  isAiGenerated   Boolean  @default(false)
+  frozen          Boolean  @default(false)
+  
+  // COST OPTIMIZATION: Lazy embedding fields
+  usageCount      Int      @default(0)
+  isEmbedded      Boolean  @default(false)
+  embedding       Float[]  @default([])  // Stored as array of floats
+  embeddedAt      DateTime?
+  manuallyApproved Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("faqs")
+  @@index([businessId])
+  @@index([tags], type: Gin)
+  @@index([businessId, isEmbedded])  // For filtering embedded FAQs
+  @@index([businessId, usageCount])  // For finding frequently used FAQs
+}
+
+// ============================================
+// STYLE PROFILE
+// ============================================
+
+model StyleProfile {
+  id                      String   @id @default(uuid())
+  tenantId                String   @unique
+  version                 Int      @default(1)
+  
+  // Core style dimensions
+  tone                    StyleTone
+  emojiUsage              EmojiUsage
+  humorLevel              HumorLevel
+  formality               Int      // 1-10 scale
+  sentenceLengthPref      SentenceLength
+  ctaStyle                CTAStyle
+  
+  // Personalization
+  signaturePhrases        String[] // ["Let me know!", "Happy to help"]
+  vocabularyPreferences   Json?    // { "avoid": ["sir", "madam"], "prefer": ["hey", "yo"] }
+  conversationGoal        String   // "build_rapport", "close_fast", "educate"
+  
+  // Learning metadata
+  editCount               Int      @default(0)
+  approvalCount           Int      @default(0)
+  rejectionCount          Int      @default(0)
+  
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  // Relations
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  learningEvents    StyleLearningEvent[]
+
+  @@map("style_profiles")
+}
+
+enum StyleTone {
+  FRIENDLY
+  PROFESSIONAL
+  PLAYFUL
+  PREMIUM
+}
+
+enum EmojiUsage {
+  NONE
+  LIGHT
+  FREQUENT
+}
+
+enum HumorLevel {
+  OFF
+  PLAYFUL
+  SARCASTIC
+}
+
+enum SentenceLength {
+  SHORT
+  MEDIUM
+  LONG
+}
+
+enum CTAStyle {
+  DIRECT
+  SOFT
+  CONSULTATIVE
+}
+
+model StyleLearningEvent {
+  id                String   @id @default(uuid())
+  styleProfileId    String
+  eventType         LearningEventType
+  originalReply     String?  @db.Text
+  editedReply       String?  @db.Text
+  extractedPatterns Json?    // { "added_phrases": [...], "tone_shift": "more_casual" }
+  createdAt         DateTime @default(now())
+
+  // Relations
+  styleProfile StyleProfile @relation(fields: [styleProfileId], references: [id], onDelete: Cascade)
+
+  @@map("style_learning_events")
+  @@index([styleProfileId, createdAt])
+}
+
+enum LearningEventType {
+  APPROVAL
+  EDIT
+  REJECTION
+}
+
+// ============================================
+// CONTACTS & SIGNALS
+// ============================================
+
+model Contact {
+  id         String   @id @default(uuid())
+  tenantId   String
+  externalId String   // WhatsApp phone number or Instagram user ID
+  platform   Platform
+  name       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  signals ContactSignal[]
+
+  @@unique([tenantId, externalId, platform])
+  @@map("contacts")
+  @@index([tenantId, platform])
+}
+
+enum Platform {
+  WHATSAPP
+  INSTAGRAM
+}
+
+model ContactSignal {
+  id              String   @id @default(uuid())
+  contactId       String
+  
+  // Extracted signals (NO raw message text)
+  intent          Intent
+  sentiment       Sentiment
+  urgency         Urgency
+  funnelStage     FunnelStage
+  
+  // Structured metadata
+  keyTopics       String[]   // ["pricing", "delivery"]
+  questionsAsked  String[]   // ["What's the cost?", "When can you start?"]
+  objectionsRaised String[]  // ["too_expensive", "timing_concerns"]
+  
+  // COST OPTIMIZATION: Track extraction method
+  extractionMethod String   @default("rules")  // "rules" | "ai" | "hybrid"
+  extractionCost   Float    @default(0.0)      // Cost in USD
+  
+  extractedAt     DateTime @default(now())
+
+  // Relations
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@map("contact_signals")
+  @@index([contactId, extractedAt])
+}
+
+enum Intent {
+  PRICING
+  AVAILABILITY
+  OBJECTION
+  BOOKING
+  QUESTION
+  GREETING
+  COMPLAINT
+  FOLLOWUP
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  HESITANT
+  NEGATIVE
+}
+
+enum Urgency {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum FunnelStage {
+  LEAD
+  INTERESTED
+  NEGOTIATING
+  CLOSED
+  CHURNED
+}
+
+// ============================================
+// AI REPLY TRACKING
+// ============================================
+
+model GeneratedReply {
+  id               String      @id @default(uuid())
+  contactId        String
+  generatedText    String      @db.Text
+  confidence       Float       // 0.0 to 1.0
+  status           ReplyStatus @default(PENDING)
+  
+  // User interaction
+  editedText       String?     @db.Text
+  approvedAt       DateTime?
+  sentAt           DateTime?
+  
+  // Metadata
+  promptVersion    String      // For A/B testing later
+  modelUsed        String      // "gpt-4o"
+  tokensUsed       Int
+  latencyMs        Int
+  
+  // COST OPTIMIZATION: Track costs
+  generationCost   Float       @default(0.0)  // Cost in USD
+  
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@map("generated_replies")
+  @@index([contactId, status])
+  @@index([createdAt])
+}
+
+enum ReplyStatus {
+  PENDING
+  APPROVED
+  EDITED
+  REJECTED
+  SENT
+}
+
+// ============================================
+// AUDIT LOGGING
+// ============================================
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String?
+  action    String   // "reply_generated", "faq_created", etc.
+  resource  String   // "reply", "faq", "contact"
+  resourceId String?
+  metadata  Json?    // Additional context
+  createdAt DateTime @default(now())
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+  @@index([tenantId, createdAt])
+  @@index([action, createdAt])
+}
+
+// ============================================
+// COST TRACKING (NEW FOR MVP)
+// ============================================
+
+model CostTracking {
+  id              String   @id @default(uuid())
+  tenantId        String
+  operation       String   // "signal_extraction", "reply_generation", "faq_embedding"
+  modelUsed       String   // "gpt-4o-mini", "gpt-4o", "text-embedding-3-small"
+  tokensUsed      Int
+  costUsd         Float
+  timestamp       DateTime @default(now())
+
+  @@map("cost_tracking")
+  @@index([tenantId, timestamp])
+  @@index([operation, timestamp])
+}
