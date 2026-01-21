@@ -13,14 +13,14 @@ export async function generateReply({
 }: GenerateReplyInput): Promise<string> {
   const model = selectModel(complexity);
 
-  const response = await openai.responses.create({
+  const response = await openai.chat.completions.create({
     model,
-    input: prompt,
-    max_output_tokens: env.openai.maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: env.openai.maxTokens,
     temperature: env.openai.temperature,
   });
 
-  const output = response.output_text;
+  const output = response.choices[0].message.content;
 
   if (!output || output.length === 0) {
     throw new Error('OpenAI returned empty response');

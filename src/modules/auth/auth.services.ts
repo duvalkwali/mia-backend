@@ -5,13 +5,41 @@ import { AppError } from '@/middleware/errorHandler';
 import { RegisterInput, LoginInput, AuthResponse } from './auth.types';
 import logger from '../../config/logger';
 
+/**
+ * ============================
+ * AUTH SERVICE
+ * ============================
+ *
+ * This service contains ALL business logic related to authentication.
+ *
+ * Responsibilities:
+ * - User registration
+ * - User login
+ * - Password hashing & verification
+ * - JWT generation & verification
+ * - Tenant creation (multi-tenant architecture)
+ *
+ * IMPORTANT:
+ * - This file DOES NOT handle HTTP requests
+ * - This file DOES NOT send HTTP responses
+ * - This file CAN throw errors (AppError)
+ */
 export class AuthService {
+  // Secret key used to sign and verify JWT tokens
   private readonly JWT_SECRET = process.env.JWT_SECRET as string;
+
+  // How long JWT tokens remain valid
   private readonly JWT_EXPIRY = process.env.JWT_EXPIRY || '7d';
+
+  // Number of salt rounds used by bcrypt when hashing passwords
   private readonly SALT_ROUNDS = 10;
 
+  /**
+   * Register a new user and create a new tenant
+   */
   async register(input: RegisterInput): Promise<AuthResponse> {
-    // Check if user exists
+
+    // 1️⃣ Check if a user with the same email already exists
     const existingUser = await prisma.user.findUnique({
       where: { email: input.email },
     });
@@ -20,12 +48,18 @@ export class AuthService {
       throw new AppError(409, 'USER_EXISTS', 'User already exists');
     }
 
-    // Hash password
+    // 2️⃣ Hash the user's password before storing it
     const passwordHash = await bcrypt.hash(input.password, this.SALT_ROUNDS);
 
-    // Create tenant and user in transaction
+    /**
+     * 3️⃣ Create tenant and user in a SINGLE database transaction
+     * This ensures:
+     * - Either both tenant and user are created
+     * - Or nothing is created (no partial data)
+     */
     const result = await prisma.$transaction(async (tx) => {
-      // Create tenant
+
+      // Create tenant (business)
       const tenant = await tx.tenant.create({
         data: {
           name: input.businessName,
@@ -34,7 +68,7 @@ export class AuthService {
         },
       });
 
-      // Create user
+      // Create user linked to the tenant
       const user = await tx.user.create({
         data: {
           tenantId: tenant.id,
@@ -47,14 +81,20 @@ export class AuthService {
       return { tenant, user };
     });
 
+    // Log successful registration event
     logger.info('User registered', {
       userId: result.user.id,
       tenantId: result.tenant.id,
     });
 
-    // Generate JWT
-    const token = this.generateToken(result.user.id, result.tenant.id, 'OWNER');
+    // 4️⃣ Generate JWT token for the new user
+    const token = this.generateToken(
+      result.user.id,
+      result.tenant.id,
+      'OWNER'
+    );
 
+    // 5️⃣ Return authentication response
     return {
       token,
       user: {
@@ -66,8 +106,12 @@ export class AuthService {
     };
   }
 
+  /**
+   * Authenticate an existing user
+   */
   async login(input: LoginInput): Promise<AuthResponse> {
-    // Find user
+
+    // 1️⃣ Find user by email and load tenant info
     const user = await prisma.user.findUnique({
       where: { email: input.email },
       include: { tenant: true },
@@ -77,7 +121,7 @@ export class AuthService {
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid credentials');
     }
 
-    // Verify password
+    // 2️⃣ Compare provided password with stored hash
     const isValidPassword = await bcrypt.compare(
       input.password,
       user.passwordHash
@@ -87,19 +131,25 @@ export class AuthService {
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid credentials');
     }
 
-    // Check tenant status
+    // 3️⃣ Check tenant account status
     if (user.tenant.status === 'SUSPENDED') {
       throw new AppError(403, 'ACCOUNT_SUSPENDED', 'Account is suspended');
     }
 
+    // Log successful login event
     logger.info('User logged in', {
       userId: user.id,
       tenantId: user.tenantId,
     });
 
-    // Generate JWT
-    const token = this.generateToken(user.id, user.tenantId, user.role);
+    // 4️⃣ Generate JWT token
+    const token = this.generateToken(
+      user.id,
+      user.tenantId,
+      user.role
+    );
 
+    // 5️⃣ Return authentication response
     return {
       token,
       user: {
@@ -111,17 +161,27 @@ export class AuthService {
     };
   }
 
+  /**
+   * Generate a signed JWT token
+   */
   private generateToken(
     userId: string,
     tenantId: string,
     role: string
   ): string {
-    return jwt.sign({ userId, tenantId, role }, this.JWT_SECRET as any, {
-      expiresIn: '7d',
-    });
+    return jwt.sign(
+      { userId, tenantId, role },
+      this.JWT_SECRET as any,
+      { expiresIn: '7d' }
+    );
   }
 
-  verifyToken(token: string): { userId: string; tenantId: string; role: string } {
+  /**
+   * Verify a JWT token and extract its payload
+   */
+  verifyToken(
+    token: string
+  ): { userId: string; tenantId: string; role: string } {
     try {
       return jwt.verify(token, this.JWT_SECRET) as any;
     } catch (error) {

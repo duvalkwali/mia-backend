@@ -10,7 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon --exec \"ts-node -r tsconfig-paths/register src/main.ts\"",
     "build": "tsc",
-    "start": "node dist/main.js",
+    "start": "ts-node -r tsconfig-paths/register src/main.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
   },
@@ -27,6 +27,7 @@
   },
   "homepage": "https://github.com/duvalkwali/mia-backend#readme",
   "dependencies": {
+    "@prisma/adapter-pg": "^7.2.0",
     "@prisma/client": "^7.2.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
@@ -49,6 +50,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.0.6",
+    "@types/pg": "^8.16.0",
     "@types/uuid": "^10.0.0",
     "nodemon": "^3.1.11",
     "prisma": "^7.2.0",
