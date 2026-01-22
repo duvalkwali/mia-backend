@@ -1,20 +1,37 @@
 import prisma from '@/config/database';
 import { AppError } from '../../middleware/errorHandler';
 import { TenantContext } from '../../shared/types/common.types';
-import { OnboardingQuizInput, RecordLearningEventInput } from './style.types';
+import {
+  OnboardingQuizInput,
+  RecordLearningEventInput,
+} from './style.types';
 import logger from '../../config/logger';
 
+/**
+ * Service layer for style-related business logic.
+ * Handles persistence and learning logic.
+ */
 export class StyleService {
+
+  /**
+   * Create a new style profile during onboarding.
+   * Each tenant can have ONLY ONE style profile.
+   */
   async createStyleProfile(ctx: TenantContext, input: OnboardingQuizInput) {
-    // Check if profile already exists
+    // Check if a profile already exists for this tenant
     const existing = await prisma.styleProfile.findUnique({
       where: { tenantId: ctx.tenantId },
     });
 
     if (existing) {
-      throw new AppError(409, 'PROFILE_EXISTS', 'Style profile already exists');
+      throw new AppError(
+        409,
+        'PROFILE_EXISTS',
+        'Style profile already exists'
+      );
     }
 
+    // Create style profile in database
     const profile = await prisma.styleProfile.create({
       data: {
         tenantId: ctx.tenantId,
@@ -37,31 +54,50 @@ export class StyleService {
     return profile;
   }
 
+  /**
+   * Fetch the style profile for the current tenant.
+   */
   async getStyleProfile(ctx: TenantContext) {
     const profile = await prisma.styleProfile.findUnique({
       where: { tenantId: ctx.tenantId },
     });
 
     if (!profile) {
-      throw new AppError(404, 'PROFILE_NOT_FOUND', 'Style profile not found. Complete onboarding first.');
+      throw new AppError(
+        404,
+        'PROFILE_NOT_FOUND',
+        'Style profile not found. Complete onboarding first.'
+      );
     }
 
     return profile;
   }
 
-  async recordLearningEvent(ctx: TenantContext, input: RecordLearningEventInput) {
+  /**
+   * Record a learning event when the user
+   * approves, edits, or rejects an AI reply.
+   */
+  async recordLearningEvent(
+    ctx: TenantContext,
+    input: RecordLearningEventInput
+  ) {
+    // Ensure style profile exists
     const profile = await this.getStyleProfile(ctx);
 
-    // Extract patterns from edit if applicable
+    // Extract patterns ONLY if the user edited the reply
     let extractedPatterns = null;
-    if (input.eventType === 'EDIT' && input.originalReply && input.editedReply) {
+    if (
+      input.eventType === 'EDIT' &&
+      input.originalReply &&
+      input.editedReply
+    ) {
       extractedPatterns = this.extractPatternsFromEdit(
         input.originalReply,
         input.editedReply
       );
     }
 
-    // Create learning event
+    // Store learning event
     const event = await prisma.styleLearningEvent.create({
       data: {
         styleProfileId: profile.id,
@@ -72,11 +108,14 @@ export class StyleService {
       },
     });
 
-    // Update profile counts
+    // Update counters on style profile
     const updateData: any = {};
-    if (input.eventType === 'APPROVAL') updateData.approvalCount = { increment: 1 };
-    if (input.eventType === 'EDIT') updateData.editCount = { increment: 1 };
-    if (input.eventType === 'REJECTION') updateData.rejectionCount = { increment: 1 };
+    if (input.eventType === 'APPROVAL')
+      updateData.approvalCount = { increment: 1 };
+    if (input.eventType === 'EDIT')
+      updateData.editCount = { increment: 1 };
+    if (input.eventType === 'REJECTION')
+      updateData.rejectionCount = { increment: 1 };
 
     await prisma.styleProfile.update({
       where: { id: profile.id },
@@ -92,33 +131,44 @@ export class StyleService {
     return event;
   }
 
+  /**
+   * Extract simple behavioral patterns from edits.
+   * This is intentionally lightweight for MVP.
+   */
   private extractPatternsFromEdit(original: string, edited: string) {
-    // Simple pattern extraction for MVP
-    // In V1, this can be enhanced with NLP
-    
     const patterns: any = {
       length_change: edited.length - original.length,
       added_phrases: [],
       removed_phrases: [],
     };
 
-    // Detect emoji changes
-    const originalEmojis = (original.match(/[\p{Emoji}]/gu) || []).length;
-    const editedEmojis = (edited.match(/[\p{Emoji}]/gu) || []).length;
+    // Emoji usage difference
+    const originalEmojis =
+      (original.match(/[\p{Emoji}]/gu) || []).length;
+    const editedEmojis =
+      (edited.match(/[\p{Emoji}]/gu) || []).length;
     patterns.emoji_change = editedEmojis - originalEmojis;
 
-    // Detect formality shift (simple heuristic)
+    // Simple tone heuristics
     const formalWords = ['please', 'kindly', 'would', 'could', 'appreciate'];
     const casualWords = ['hey', 'yeah', 'cool', 'awesome', 'totally'];
-    
-    const originalFormal = formalWords.filter(w => original.toLowerCase().includes(w)).length;
-    const editedFormal = formalWords.filter(w => edited.toLowerCase().includes(w)).length;
-    const originalCasual = casualWords.filter(w => original.toLowerCase().includes(w)).length;
-    const editedCasual = casualWords.filter(w => edited.toLowerCase().includes(w)).length;
-    
-    if (editedFormal > originalFormal) patterns.tone_shift = 'more_formal';
-    if (editedCasual > originalCasual) patterns.tone_shift = 'more_casual';
+
+    const originalFormal =
+      formalWords.filter(w => original.toLowerCase().includes(w)).length;
+    const editedFormal =
+      formalWords.filter(w => edited.toLowerCase().includes(w)).length;
+
+    const originalCasual =
+      casualWords.filter(w => original.toLowerCase().includes(w)).length;
+    const editedCasual =
+      casualWords.filter(w => edited.toLowerCase().includes(w)).length;
+
+    if (editedFormal > originalFormal)
+      patterns.tone_shift = 'more_formal';
+    if (editedCasual > originalCasual)
+      patterns.tone_shift = 'more_casual';
 
     return patterns;
   }
 }
+

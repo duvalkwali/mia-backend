@@ -5,14 +5,40 @@ import { CreateBusinessInput, CreateFAQInput } from './business.types';
 import { EmbeddingService } from './embedding.service';
 import logger from '../../config/logger';
 
+/**
+ * ============================
+ * BUSINESS SERVICE
+ * ============================
+ *
+ * This service contains ALL business-related logic:
+ * - Business profile creation & updates
+ * - FAQ management
+ * - AI embedding orchestration
+ * - Tenant isolation enforcement
+ *
+ * IMPORTANT:
+ * - This file does NOT handle HTTP
+ * - This file DOES enforce business rules
+ */
 export class BusinessService {
+
+  /**
+   * Embedding service is responsible for:
+   * - Creating embeddings
+   * - Searching FAQs efficiently
+   * - Optimizing AI-related costs
+   */
   private embeddingService = new EmbeddingService();
 
+  /**
+   * Create or update the business profile for a tenant
+   */
   async createOrUpdateBusiness(
     ctx: TenantContext,
     input: CreateBusinessInput
   ) {
-    // Check if business already exists
+
+    // Check if a business already exists for this tenant
     const existing = await prisma.business.findUnique({
       where: { tenantId: ctx.tenantId },
     });
@@ -37,36 +63,39 @@ export class BusinessService {
       });
 
       return updated;
-    } else {
-      // Create new business
-      const created = await prisma.business.create({
-        data: {
-          tenantId: ctx.tenantId,
-          businessType: input.businessType,
-          description: input.description,
-          pricingRanges: input.pricingRanges,
-          primaryGoals: input.primaryGoals,
-          allowedClaims: input.allowedClaims || [],
-          constraints: input.constraints || {},
-        },
-      });
-
-      logger.info('Business created', {
-        tenantId: ctx.tenantId,
-        businessId: created.id,
-      });
-
-      return created;
     }
+
+    // Create new business profile
+    const created = await prisma.business.create({
+      data: {
+        tenantId: ctx.tenantId,
+        businessType: input.businessType,
+        description: input.description,
+        pricingRanges: input.pricingRanges,
+        primaryGoals: input.primaryGoals,
+        allowedClaims: input.allowedClaims || [],
+        constraints: input.constraints || {},
+      },
+    });
+
+    logger.info('Business created', {
+      tenantId: ctx.tenantId,
+      businessId: created.id,
+    });
+
+    return created;
   }
 
+  /**
+   * Retrieve business profile along with most-used FAQs
+   */
   async getBusiness(ctx: TenantContext) {
     const business = await prisma.business.findUnique({
       where: { tenantId: ctx.tenantId },
       include: {
         faqs: {
           orderBy: { usageCount: 'desc' },
-          take: 20,
+          take: 20, // Limit to most relevant FAQs
         },
       },
     });
@@ -78,16 +107,25 @@ export class BusinessService {
     return business;
   }
 
+  /**
+   * Create a new FAQ entry
+   */
   async createFAQ(ctx: TenantContext, input: CreateFAQInput) {
-    // Get business
+
+    // Ensure business exists
     const business = await prisma.business.findUnique({
       where: { tenantId: ctx.tenantId },
     });
 
     if (!business) {
-      throw new AppError(404, 'BUSINESS_NOT_FOUND', 'Business not found. Create business profile first.');
+      throw new AppError(
+        404,
+        'BUSINESS_NOT_FOUND',
+        'Business not found. Create business profile first.'
+      );
     }
 
+    // Create FAQ
     const faq = await prisma.fAQ.create({
       data: {
         businessId: business.id,
@@ -106,7 +144,13 @@ export class BusinessService {
       manuallyApproved: faq.manuallyApproved,
     });
 
-    // COST OPTIMIZATION: Embed immediately if manually approved
+    /**
+     * COST OPTIMIZATION:
+     * Only generate embeddings immediately if the FAQ
+     * is manually approved by the business owner.
+     *
+     * This avoids embedding low-quality or temporary FAQs.
+     */
     if (faq.manuallyApproved) {
       await this.embeddingService.checkAndEmbedFAQ(faq.id);
     }
@@ -114,6 +158,9 @@ export class BusinessService {
     return faq;
   }
 
+  /**
+   * Retrieve all FAQs for the tenant
+   */
   async getFAQs(ctx: TenantContext) {
     const business = await prisma.business.findUnique({
       where: { tenantId: ctx.tenantId },
@@ -123,15 +170,22 @@ export class BusinessService {
       throw new AppError(404, 'BUSINESS_NOT_FOUND', 'Business not found');
     }
 
-    const faqs = await prisma.fAQ.findMany({
+    return prisma.fAQ.findMany({
       where: { businessId: business.id },
       orderBy: { createdAt: 'desc' },
     });
-
-    return faqs;
   }
 
-  async searchFAQs(ctx: TenantContext, query: string, limit: number = 3) {
+  /**
+   * Search FAQs using semantic or keyword search
+   *
+   * This method is used by the AI reply system
+   */
+  async searchFAQs(
+    ctx: TenantContext,
+    query: string,
+    limit: number = 3
+  ) {
     const business = await prisma.business.findUnique({
       where: { tenantId: ctx.tenantId },
     });
@@ -140,8 +194,15 @@ export class BusinessService {
       return [];
     }
 
-    // COST OPTIMIZATION: Use embedding service which handles both
-    // semantic (if embeddings exist) and keyword search (fallback)
-    return this.embeddingService.searchFAQs(business.id, query, limit);
+    /**
+     * COST OPTIMIZATION:
+     * - Use embeddings when available
+     * - Fall back to keyword search otherwise
+     */
+    return this.embeddingService.searchFAQs(
+      business.id,
+      query,
+      limit
+    );
   }
 }
