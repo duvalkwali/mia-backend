@@ -1,8 +1,16 @@
+/**
+ * Error handling middleware for the MIA Backend.
+ * Provides centralized error processing and standardized API error responses.
+ */
+
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import logger from '../config/logger';
 import { ApiResponse } from '../shared/types/common.types';
 
+/**
+ * Custom application error class with structured error information.
+ */
 export class AppError extends Error {
   constructor(
     public statusCode: number,
@@ -15,6 +23,16 @@ export class AppError extends Error {
   }
 }
 
+/**
+ * Global error handling middleware.
+ * Logs errors and returns standardized JSON error responses.
+ * Handles different types of errors (Zod validation, custom AppError, unknown).
+ *
+ * @param err - The error that occurred
+ * @param req - Express request object
+ * @param res - Express response object
+ * @param next - Express next function (unused)
+ */
 export function errorHandler(
   err: Error,
   req: Request,

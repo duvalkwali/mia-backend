@@ -1,3 +1,8 @@
+/**
+ * Authentication middleware for the MIA Backend.
+ * Handles JWT token verification and injects tenant context into requests.
+ */
+
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '../modules/auth/auth.services';
 import { AppError } from './errorHandler';
@@ -14,6 +19,14 @@ declare global {
   }
 }
 
+/**
+ * Middleware function to require authentication for protected routes.
+ * Verifies the JWT token from the Authorization header and injects tenant context.
+ *
+ * @param req - Express request object
+ * @param res - Express response object
+ * @param next - Express next function
+ */
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;

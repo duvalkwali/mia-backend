@@ -1,3 +1,8 @@
+/**
+ * Main application setup for the MIA Backend API.
+ * This file configures the Express application with middleware, routes, and error handling.
+ */
+
 import express, { Express } from 'express';
 import cors from 'cors';
 import { errorHandler } from '@/middleware/errorHandler';
@@ -11,6 +16,12 @@ import authRoutes from '@/modules/auth/auth.routes';
 // import replyRoutes from './modules/ai-reply/reply.routes';
 // import whatsappRoutes from './modules/webhooks/whatsapp.routes';
 
+/**
+ * Creates and configures the Express application instance.
+ * Sets up middleware, routes, and error handling in the correct order.
+ *
+ * @returns {Express} The configured Express application
+ */
 export function createApp(): Express {
   const app = express();
 

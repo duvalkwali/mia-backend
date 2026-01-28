@@ -1,3 +1,9 @@
+/**
+ * AI-powered signal extractor using OpenAI's GPT-4o-mini model.
+ * Used as a fallback when rules-based extraction has low confidence.
+ * Provides high-accuracy signal extraction at a low cost.
+ */
+
 import openai, { AI_MODELS, calculateCost } from '../../../config/openai';
 import logger from '../../../config/logger';
 import { ExtractedSignals } from './rulesExtractor';
@@ -9,6 +15,13 @@ import { ExtractedSignals } from './rulesExtractor';
  * GPT-4o-mini is 90% cheaper than GPT-4o.
  */
 export class AIExtractor {
+  /**
+   * Extracts signals from message text using AI.
+   * Sends a structured prompt to OpenAI and parses the JSON response.
+   *
+   * @param messageText - The customer message to analyze
+   * @returns Object containing extracted signals and cost information
+   */
   async extract(messageText: string): Promise<{ signals: ExtractedSignals; cost: number }> {
     const prompt = `You are a signal extraction system. Analyze the following customer message and extract structured signals.
 
@@ -37,7 +50,7 @@ Return ONLY valid JSON, no other text.`;
       const response = await openai.chat.completions.create({
         model: AI_MODELS.EXTRACTION, // gpt-4o-mini
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
+        temperature: 0.1, // Low temperature for consistent results
         response_format: { type: 'json_object' },
         max_tokens: 300,
       });
@@ -49,7 +62,7 @@ Return ONLY valid JSON, no other text.`;
 
       const extracted = JSON.parse(content);
 
-      // Calculate cost
+      // Calculate cost based on token usage
       const tokensUsed = response.usage?.total_tokens || 0;
       const cost = calculateCost(
         AI_MODELS.EXTRACTION,

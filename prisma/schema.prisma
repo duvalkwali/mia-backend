@@ -213,6 +213,7 @@ model Contact {
   // Relations
   tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   signals ContactSignal[]
+  replies GeneratedReply[]
 
   @@unique([tenantId, externalId, platform])
   @@map("contacts")
@@ -311,6 +312,9 @@ model GeneratedReply {
   
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+
+  // Relations
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@map("generated_replies")
   @@index([contactId, status])

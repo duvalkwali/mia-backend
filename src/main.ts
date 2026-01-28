@@ -1,3 +1,8 @@
+/**
+ * Main entry point for the MIA Backend application.
+ * Initializes database connections, starts the server, and handles graceful shutdown.
+ */
+
 import { createApp } from '@/app';
 import logger from '@/config/logger';
 import prisma from '@/config/database';
@@ -5,6 +10,11 @@ import redisClient from '@/config/redis';
 
 const PORT = process.env.PORT || 3000;
 
+/**
+ * Starts the server after establishing database and Redis connections.
+ * Performs connection tests and starts listening on the specified port.
+ * Exits the process if startup fails.
+ */
 async function startServer() {
   try {
     // Test database connection

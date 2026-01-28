@@ -1,3 +1,8 @@
+/**
+ * Signals service for extracting and managing customer signals.
+ * Implements a hybrid extraction strategy combining rules-based and AI-powered methods.
+ */
+
 import prisma from '../../config/database';
 import { AppError } from '../../middleware/errorHandler';
 import { TenantContext } from '../../shared/types/common.types';
@@ -5,7 +10,11 @@ import { ExtractSignalsInput, SignalExtractionResult } from './signals.types';
 import { RulesExtractor } from './extractors/rulesExtractor';
 import { AIExtractor } from './extractors/aiExtractor';
 import logger from '../../config/logger';
+import { FunnelStage, Intent, Sentiment, Urgency } from '@prisma/client';
 
+/**
+ * Service class for signal extraction and management operations.
+ */
 export class SignalsService {
   private rulesExtractor = new RulesExtractor();
   private aiExtractor = new AIExtractor();
@@ -61,10 +70,10 @@ export class SignalsService {
     const signal = await prisma.contactSignal.create({
       data: {
         contactId: contact.id,
-        intent: finalSignals.intent,
-        sentiment: finalSignals.sentiment,
-        urgency: finalSignals.urgency,
-        funnelStage: finalSignals.funnelStage,
+        intent: finalSignals.intent as Intent,
+        sentiment: finalSignals.sentiment as Sentiment,
+        urgency: finalSignals.urgency as Urgency,
+        funnelStage: finalSignals.funnelStage as FunnelStage,
         keyTopics: finalSignals.keyTopics,
         questionsAsked: finalSignals.questionsAsked,
         objectionsRaised: finalSignals.objectionsRaised,
@@ -112,6 +121,16 @@ export class SignalsService {
     };
   }
 
+  /**
+   * Retrieves or creates a contact record based on external ID and platform.
+   * Ensures contacts are properly scoped to tenants.
+   *
+   * @param ctx - Tenant context
+   * @param externalId - External platform identifier
+   * @param platform - Platform type (WHATSAPP or INSTAGRAM)
+   * @param name - Optional contact name
+   * @returns Contact record
+   */
   private async getOrCreateContact(
     ctx: TenantContext,
     externalId: string,
@@ -147,6 +166,14 @@ export class SignalsService {
     return contact;
   }
 
+  /**
+   * Retrieves the signal history for a specific contact.
+   * Returns the last 10 signals ordered by extraction time.
+   *
+   * @param ctx - Tenant context
+   * @param contactId - Internal contact ID
+   * @returns Array of signal records
+   */
   async getContactSignals(ctx: TenantContext, contactId: string) {
     // Verify contact belongs to tenant
     const contact = await prisma.contact.findFirst({
@@ -169,6 +196,14 @@ export class SignalsService {
     return signals;
   }
 
+  /**
+   * Gets the current state (most recent signal) for a contact.
+   * Returns null if no signals exist for the contact.
+   *
+   * @param ctx - Tenant context
+   * @param contactId - Internal contact ID
+   * @returns Most recent signal or null
+   */
   async getCurrentContactState(ctx: TenantContext, contactId: string) {
     const signals = await this.getContactSignals(ctx, contactId);
 
