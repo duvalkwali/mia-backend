@@ -1,3 +1,11 @@
+/**
+ * ReplyService
+ *
+ * Core business logic for generating and managing AI replies.
+ * Responsibilities include: building prompts, calling the AI model,
+ * persisting generated replies and tracking costs, and maintaining
+ * ephemeral conversation context for better subsequent responses.
+ */
 import openai, { AI_MODELS, calculateCost } from '../../config/openai';
 import prisma from '../../config/database';
 import redisClient from '../../config/redis';
@@ -16,6 +24,17 @@ export class ReplyService {
   private styleService = new StyleService();
   private promptBuilder = new PromptBuilder();
 
+  /**
+   * Generate a reply for a contact message.
+   *
+   * Steps:
+   * 1) Extract signals (rules or AI)
+   * 2) Collect context (business, style profile, current signals, ephemeral context)
+   * 3) Build prompt and call the AI model to generate the reply
+   * 4) Persist the reply, track costs, and update ephemeral context
+   *
+   * Returns a compact GeneratedReplyData used by API responses.
+   */
   async generateReply(
     ctx: TenantContext,
     input: GenerateReplyInput
@@ -52,7 +71,7 @@ export class ReplyService {
     // 4. Generate reply using AI (GPT-4o for quality)
     const { generatedText, cost, tokensUsed } = await this.callAI(prompt);
 
-    // 5. Calculate confidence
+    // 5. Calculate confidence score
     const confidence = this.calculateConfidence(generatedText, styleProfile);
 
     // 6. Store generated reply
@@ -150,6 +169,21 @@ export class ReplyService {
     }
   }
 
+  /**
+   * Estimates how well the generated reply matches the business style.
+   *
+   * Heuristics (explainable & fast):
+   * - Base score: 0.5
+   * - Emoji usage: small boost when usage matches style preference
+   * - Length: small boost when length fits preferred sentence length
+   * - Signature phrases: larger boost (0.2) as this is a strong match
+   *
+   * These are intentionally simple to keep inference cheap and interpretable.
+   * We clamp the returned score to [0, 1].
+   *
+   * @param text - Generated text from the AI model
+   * @param style - Style profile (emoji usage, sentence length preference, signature phrases)
+   */
   private calculateConfidence(text: string, style: any): number {
     // Simple heuristics for MVP
     let score = 0.5;
@@ -201,6 +235,10 @@ export class ReplyService {
     await redisClient.setEx(key, ttl, JSON.stringify(context));
   }
 
+  /**
+   * Approve a generated reply.
+   * Marks the reply status as APPROVED, records a learning event, and updates ephemeral context.
+   */
   async approveReply(ctx: TenantContext, replyId: string) {
     const reply = await prisma.generatedReply.findUnique({
       where: { id: replyId },
@@ -246,6 +284,10 @@ export class ReplyService {
     return updated;
   }
 
+  /**
+   * Edit an existing generated reply.
+   * Applies the provided edited text, marks status as EDITED, and records a learning event.
+   */
   async editReply(ctx: TenantContext, input: EditReplyInput) {
     const reply = await prisma.generatedReply.findUnique({
       where: { id: input.replyId },
@@ -285,6 +327,10 @@ export class ReplyService {
     return updated;
   }
 
+  /**
+   * Reject a generated reply.
+   * Marks the reply as REJECTED and logs the event for auditing.
+   */
   async rejectReply(ctx: TenantContext, replyId: string) {
     const reply = await prisma.generatedReply.findUnique({
       where: { id: replyId },

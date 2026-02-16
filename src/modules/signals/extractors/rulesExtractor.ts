@@ -92,7 +92,7 @@ export class RulesExtractor {
       BOOKING: ['book', 'reserve', 'appointment', 'schedule', 'confirm', 'slot'],
       OBJECTION: ['but', 'however', 'concern', 'worried', 'not sure', 'hesitant', 'problem'],
       GREETING: ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening'],
-      COMPLAINT: ['disappointed', 'unhappy', 'bad', 'terrible', 'awful', 'worst', 'refund'],
+      COMPLAINT: ['disappointed', 'unhappy', 'bad', 'terrible', 'awful', 'worst', 'refund', 'shitty'],
       THANKS: ['thank you', 'thanks', 'appreciate', 'grateful', 'much appreciated'],
       FOLLOWUP: ['following up', 'any update', 'heard back', 'status', 'checking in'],
     };
@@ -248,11 +248,26 @@ export class RulesExtractor {
 
   /**
    * Calculates confidence score based on detection results.
-   * Higher confidence when multiple signals are detected.
    *
-   * @param intent - Detected intent
-   * @param sentiment - Detected sentiment
-   * @param urgency - Detected urgency
+   * Scoring pattern (explainable heuristics used for MVP):
+   * - Base score: 0.5
+   * - Intent: +0.20 if intent is NOT 'QUESTION' (questions are weaker signals)
+   * - Key topics: +0.04 per detected topic, capped at +0.12 (diminishing returns)
+   * - Questions detected: +0.10 (explicit question = stronger extraction)
+   * - Urgency: +0.10 if urgency is MEDIUM/HIGH
+   * - Sentiment:
+   *     - POSITIVE or NEGATIVE => +0.10 (strong directional signal)
+   *     - HESITANT => -0.05 (indicates uncertainty)
+   * - Contradiction penalties: small -0.10 adjustments for clear mismatches
+   *
+   * Rationale: We combine orthogonal signals (intent, topics, urgency,
+   * sentiment and explicit questions) using small, explainable weights.
+   * This keeps the heuristic fast, interpretable, and easy to tune.
+   * Final score is clamped to [0, 1].
+   *
+   * @param intent - Detected intent (string label)
+   * @param sentiment - Detected sentiment (POSITIVE/NEGATIVE/HESITANT/NEUTRAL)
+   * @param urgency - Detected urgency (LOW/MEDIUM/HIGH)
    * @param keyTopics - Extracted topics
    * @param questionsAsked - Detected questions
    * @returns Confidence score between 0 and 1
@@ -264,14 +279,43 @@ export class RulesExtractor {
     keyTopics: string[],
     questionsAsked: string[]
   ): number {
-    let confidence = 0.5; // Base
+    let confidence = 0.5; // Base confidence
 
-    // Higher confidence if we detected specific patterns
+    // Intent presence is a strong signal (questions are default / weak)
     if (intent !== 'QUESTION') confidence += 0.2;
-    if (keyTopics.length > 0) confidence += 0.1;
+
+    // Key topics -> small boost with diminishing returns
+    if (keyTopics.length > 0) {
+      confidence += Math.min(0.12, 0.04 * keyTopics.length);
+    }
+
+    // Detecting explicit questions increases confidence
     if (questionsAsked.length > 0) confidence += 0.1;
+
+    // Urgency bump for anything above LOW
     if (urgency !== 'LOW') confidence += 0.1;
 
-    return Math.min(confidence, 1.0);
+    // Sentiment adds important signal:
+    // - POSITIVE / NEGATIVE: stronger signal -> +0.1
+    // - HESITANT: indicates uncertainty -> -0.05
+    // - NEUTRAL: no change
+    switch (sentiment) {
+      case 'POSITIVE':
+      case 'NEGATIVE':
+        confidence += 0.1;
+        break;
+      case 'HESITANT':
+        confidence -= 0.05;
+        break;
+      default:
+        break;
+    }
+
+    // Simple contradiction penalties (small heuristics)
+    if (intent === 'COMPLAINT' && sentiment === 'POSITIVE') confidence -= 0.1;
+    if (intent === 'THANKS' && sentiment === 'NEGATIVE') confidence -= 0.1;
+
+    // Clamp between 0 and 1
+    return Math.max(0, Math.min(confidence, 1.0));
   }
 }

@@ -1,3 +1,11 @@
+/**
+ * PromptBuilder
+ *
+ * Responsible for composing the system instruction (cached) and the
+ * dynamic user message containing signals + relevant FAQs. Caching the
+ * system instruction reduces cost and latency by reusing tenant/style
+ * specific templates while keeping the user message dynamic.
+ */
 import { Business, FAQ, StyleProfile, ContactSignal } from '@prisma/client';
 import { ComposedPrompt } from './reply.types';
 import { TemplateCache } from './templateCache';
@@ -150,6 +158,10 @@ Reply:`;
     return scored.slice(0, 3).map(item => item.faq);
   }
 
+  /**
+   * Returns a short human-readable guidance string used in system prompts
+   * that describes the desired sentence length for generated replies.
+   */
   private getSentenceLengthGuidance(pref: string): string {
     switch (pref) {
       case 'SHORT': return 'concise (1-2 sentences max)';
@@ -159,6 +171,10 @@ Reply:`;
     }
   }
 
+  /**
+   * Returns guidance text describing acceptable emoji usage for prompts
+   * based on the style profile's emoji preference.
+   */
   private getEmojiGuidance(usage: string): string {
     switch (usage) {
       case 'NONE': return 'Use NO emojis';
@@ -168,6 +184,10 @@ Reply:`;
     }
   }
 
+  /**
+   * Maps style tone keys to short prompt guidance strings so the AI can
+   * consistently replicate the requested tone.
+   */
   private getToneGuidance(tone: string): string {
     switch (tone) {
       case 'FRIENDLY': return 'Be warm and approachable';
@@ -178,6 +198,10 @@ Reply:`;
     }
   }
 
+  /**
+   * Returns guidance describing the preferred CTA style (direct, soft, or consultative)
+   * used when composing the system instruction for a tenant.
+   */
   private getCTAGuidance(cta: string): string {
     switch (cta) {
       case 'DIRECT': return 'End with a clear, direct call-to-action';

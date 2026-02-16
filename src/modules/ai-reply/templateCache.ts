@@ -2,6 +2,12 @@ import redisClient from '../../config/redis';
 import logger from '../../config/logger';
 
 /**
+ * TemplateCache
+ *
+ * Small wrapper around Redis for caching system-level prompt templates.
+ * Keeps the cache operations resilient to Redis errors (logs and continues).
+ */
+/**
  * COST OPTIMIZATION: Cache prompt templates, not full prompts
  * 
  * Strategy:
