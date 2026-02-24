@@ -62,4 +62,29 @@ export class WhatsAppService {
       replyGenerated: reply,
     };
   }
+
+  // Send a message back to a WhatsApp user using the Graph API
+  // src/modules/webhooks/whatsapp.service.ts - Add this method:
+
+async sendMessage(phoneNumber: string, message: string): Promise<void> {
+  const url = `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: phoneNumber,
+      type: 'text',
+      text: { body: message },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`WhatsApp API error: ${await response.text()}`);
+  }
+}
 }

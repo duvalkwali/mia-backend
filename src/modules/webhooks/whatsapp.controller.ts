@@ -19,6 +19,7 @@ import { WhatsAppService } from './whatsapp.service';
 import { verifyWebhookSignature } from '../../shared/types/crypto';
 import { AppError } from '../../middleware/errorHandler';
 import logger from '../../config/logger';
+import prisma from '@/config/database';
 
 const service = new WhatsAppService();
 
@@ -107,6 +108,26 @@ export class WhatsAppController {
     // Implementation would look up tenant by phone number
     // For MVP, could use a simple mapping table maintained by ops
     // TODO: Implement actual mapping in a future task
+
+    try {
+    const phoneNumberId = payload.entry[0].changes[0].value.metadata.phone_number_id;
+    
+    // Create a mapping table (for MVP - hardcode or use DB)
+    const tenant = await prisma.tenant.findFirst({
+      where: {
+        // Option 1: Store WhatsApp phone number in tenant metadata
+        // metadata: { contains: { whatsapp_phone_id: phoneNumberId } }
+        
+        // Option 2: For MVP - just use first active tenant
+        status: 'ACTIVE',
+      },
+    });
+    
+    return tenant?.id || null;
+  } catch (error) {
+    logger.error('Failed to get tenant from phone', { error });
     return null;
+  }
+   
   }
 }
