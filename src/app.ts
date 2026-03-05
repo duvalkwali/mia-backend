@@ -54,6 +54,19 @@ export function createApp(): Express {
   app.use(`/api/${apiVersion}/replies`, replyRoutes);
   app.use(`/api/${apiVersion}/webhooks/whatsapp`, whatsappRoutes);
 
+
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+  'http://localhost:5173',
+  'http://localhost:3001',
+];
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
   // Error handling (must be last)
   app.use(errorHandler);
 
