@@ -1,34 +1,43 @@
+/**
+ * Ollama AI client (OpenAI-compatible API).
+ *
+ * Ollama exposes an OpenAI-compatible endpoint at http://localhost:11434/v1,
+ * so we reuse the `openai` npm package — no extra dependency needed.
+ *
+ * To pull models:
+ *   ollama pull llama3.2          # chat / generation / extraction
+ *   ollama pull nomic-embed-text  # embeddings
+ */
 import OpenAI from 'openai';
+import { env } from '@/config/env';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const ollamaClient = new OpenAI({
+  baseURL: env.ollama.baseUrl,
+  // Ollama doesn't require an API key; the SDK requires a non-empty string.
+  apiKey: 'ollama',
+});
 
 /**
- * COST OPTIMIZATION: Model selection based on task
+ * Model aliases used throughout the codebase.
  */
 export const AI_MODELS = {
-  EXTRACTION: process.env.OPENAI_MODEL_EXTRACTION || 'gpt-4o-mini',  // Cheap
-  GENERATION: process.env.OPENAI_MODEL_GENERATION || 'gpt-4o',        // Quality
-  EMBEDDING: process.env.FAQ_EMBEDDING_MODEL || 'text-embedding-3-small',  // Cheap embeddings
+  EXTRACTION: env.ollama.extractionModel,
+  GENERATION: env.ollama.strongModel,
+  EMBEDDING: env.ollama.embeddingModel,
 } as const;
 
 /**
- * COST TRACKING: Approximate costs per 1K tokens (as of 2024)
+ * Local models have no per-token cost.
+ * We keep cost tracking at $0 so the rest of the pipeline still records usage.
  */
-export const MODEL_COSTS = {
-  'gpt-4o-mini': { input: 0.00015, output: 0.0006 },     // $0.15/$0.60 per 1M
-  'gpt-4o': { input: 0.0025, output: 0.01 },             // $2.50/$10.00 per 1M
-  'text-embedding-3-small': { input: 0.00002, output: 0 }, // $0.02 per 1M
-} as const;
+export const MODEL_COSTS: Record<string, { input: number; output: number }> = {};
 
 export function calculateCost(
-  model: string,
-  inputTokens: number,
-  outputTokens: number = 0
+  _model: string,
+  _inputTokens: number,
+  _outputTokens: number = 0
 ): number {
-  const costs = MODEL_COSTS[model as keyof typeof MODEL_COSTS];
-  if (!costs) return 0;
-
-  return (inputTokens / 1000) * costs.input + (outputTokens / 1000) * costs.output;
+  return 0; // Local Ollama — free
 }
 
-export default openai;
+export default ollamaClient;

@@ -10,11 +10,11 @@ import logger from '@/config/logger';
 
 // Import routes
 import authRoutes from '@/modules/auth/auth.routes';
-// import businessRoutes from './modules/business/business.routes';
-// import styleRoutes from './modules/style/style.routes';
-// import signalsRoutes from './modules/signals/signals.routes';
-// import replyRoutes from './modules/ai-reply/reply.routes';
-// import whatsappRoutes from './modules/webhooks/whatsapp.routes';
+import businessRoutes from '@/modules/business/business.routes';
+import styleRoutes from '@/modules/style/style.routes';
+import signalsRoutes from '@/modules/signals/signals.routes';
+import replyRoutes from '@/modules/ai-reply/reply.routes';
+import whatsappRoutes from '@/modules/webhooks/whatsapp.routes';
 
 /**
  * Creates and configures the Express application instance.
@@ -48,11 +48,11 @@ export function createApp(): Express {
   // API Routes
   const apiVersion = process.env.API_VERSION || 'v1';
   app.use(`/api/${apiVersion}/auth`, authRoutes);
-  // app.use(`/api/${apiVersion}/business`, businessRoutes);
-  // app.use(`/api/${apiVersion}/style`, styleRoutes);
-  // app.use(`/api/${apiVersion}/signals`, signalsRoutes);
-  // app.use(`/api/${apiVersion}/replies`, replyRoutes);
-  // app.use(`/api/${apiVersion}/webhooks/whatsapp`, whatsappRoutes);
+  app.use(`/api/${apiVersion}/business`, businessRoutes);
+  app.use(`/api/${apiVersion}/style`, styleRoutes);
+  app.use(`/api/${apiVersion}/signals`, signalsRoutes);
+  app.use(`/api/${apiVersion}/replies`, replyRoutes);
+  app.use(`/api/${apiVersion}/webhooks/whatsapp`, whatsappRoutes);
 
   // Error handling (must be last)
   app.use(errorHandler);

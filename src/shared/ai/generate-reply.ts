@@ -16,14 +16,14 @@ export async function generateReply({
   const response = await openai.chat.completions.create({
     model,
     messages: [{ role: 'user', content: prompt }],
-    max_tokens: env.openai.maxTokens,
-    temperature: env.openai.temperature,
+    max_tokens: env.ollama.maxTokens,
+    temperature: env.ollama.temperature,
   });
 
   const output = response.choices[0].message.content;
 
   if (!output || output.length === 0) {
-    throw new Error('OpenAI returned empty response');
+    throw new Error('Ollama returned empty response');
   }
 
   return output.trim();

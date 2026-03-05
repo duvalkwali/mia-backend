@@ -11,6 +11,7 @@ import { RulesExtractor } from './extractors/rulesExtractor';
 import { AIExtractor } from './extractors/aiExtractor';
 import logger from '../../config/logger';
 import { FunnelStage, Intent, Sentiment, Urgency } from '@prisma/client';
+import { AI_MODELS } from '../../config/openai';
 
 /**
  * Service class for signal extraction and management operations.
@@ -88,8 +89,8 @@ export class SignalsService {
         data: {
           tenantId: ctx.tenantId,
           operation: 'signal_extraction',
-          modelUsed: 'gpt-4o-mini',
-          tokensUsed: Math.round(extractionCost / 0.00015 * 1000), // Approximate
+          modelUsed: AI_MODELS.EXTRACTION,
+          tokensUsed: 0, // Local Ollama — token count not billed
           costUsd: extractionCost,
         },
       });

@@ -8,15 +8,15 @@ export type ReplyComplexity =
 export function selectModel(complexity: ReplyComplexity): string {
   switch (complexity) {
     case 'simple':
-      return env.openai.defaultModel;
+      return env.ollama.defaultModel;
 
     case 'standard':
-      return env.openai.defaultModel;
+      return env.ollama.defaultModel;
 
     case 'high-stakes':
-      return env.openai.strongModel;
+      return env.ollama.strongModel;
 
     default:
-      return env.openai.defaultModel;
+      return env.ollama.defaultModel;
   }
 }

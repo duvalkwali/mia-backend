@@ -13,13 +13,17 @@ export const env = {
   port: Number(process.env.PORT ?? 3000),
 
   databaseUrl: requireEnv('DATABASE_URL'),
-  redisUrl: requireEnv('REDIS_URL'),
+  redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
 
-  openai: {
-    apiKey: requireEnv('OPENAI_API_KEY'),
-    defaultModel: process.env.OPENAI_DEFAULT_MODEL ?? 'gpt-4.1-mini',
-    strongModel: process.env.OPENAI_STRONG_MODEL ?? 'gpt-4.1',
-    maxTokens: Number(process.env.OPENAI_MAX_TOKENS ?? 300),
-    temperature: Number(process.env.OPENAI_TEMPERATURE ?? 0.4),
+  ollama: {
+    baseUrl: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434/v1',
+    // Chat models — swap for any model you have pulled locally (e.g. mistral, qwen2.5)
+    defaultModel: process.env.OLLAMA_DEFAULT_MODEL ?? 'llama3.2',
+    strongModel: process.env.OLLAMA_STRONG_MODEL ?? 'llama3.2',
+    extractionModel: process.env.OLLAMA_EXTRACTION_MODEL ?? 'llama3.2',
+    // Embedding model — run: ollama pull nomic-embed-text
+    embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL ?? 'nomic-embed-text',
+    maxTokens: Number(process.env.OLLAMA_MAX_TOKENS ?? 300),
+    temperature: Number(process.env.OLLAMA_TEMPERATURE ?? 0.4),
   },
 };
