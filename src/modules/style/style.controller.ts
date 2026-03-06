@@ -60,6 +60,36 @@ export class StyleController {
   }
 
   /**
+   * PUT /style — upsert style profile from the frontend wizard.
+   * Maps frontend values (FORMAL/CASUAL/FRIENDLY, NONE/LOW/MODERATE/HIGH)
+   * to the DB enum values (PROFESSIONAL/PLAYFUL/FRIENDLY, NONE/LIGHT/FREQUENT).
+   */
+  async updateStyleProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { tone, formality, emojiUsage, targetAudience, signaturePhrases } = req.body;
+
+      const toneMap: Record<string, string> = {
+        FORMAL: 'PROFESSIONAL', CASUAL: 'PLAYFUL', FRIENDLY: 'FRIENDLY', PROFESSIONAL: 'PROFESSIONAL',
+      };
+      const emojiMap: Record<string, string> = {
+        NONE: 'NONE', LOW: 'LIGHT', MODERATE: 'LIGHT', HIGH: 'FREQUENT', LIGHT: 'LIGHT', FREQUENT: 'FREQUENT',
+      };
+
+      const result = await service.upsertStyleProfile(req.tenantContext!, {
+        tone: (toneMap[tone] || 'FRIENDLY') as 'FRIENDLY' | 'PROFESSIONAL' | 'PLAYFUL' | 'PREMIUM',
+        emojiUsage: (emojiMap[emojiUsage] || 'NONE') as 'NONE' | 'LIGHT' | 'FREQUENT',
+        formality: Number(formality) || 3,
+        signaturePhrases: Array.isArray(signaturePhrases) ? signaturePhrases : [],
+        conversationGoal: targetAudience || 'build_rapport',
+      });
+
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Record how a user reacted to an AI reply
    * This feeds learning + personalization.
    */

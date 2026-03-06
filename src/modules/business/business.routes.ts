@@ -79,6 +79,31 @@ router.get(
 );
 
 /**
+ * Delete a FAQ by ID
+ * DELETE /business/faqs/:id
+ */
+router.delete(
+  '/faqs/:id',
+  (req, res, next) => controller.deleteFAQ(req, res, next)
+);
+
+/**
+ * GET /business/profile → alias for GET /business (frontend-friendly)
+ */
+router.get(
+  '/profile',
+  (req, res, next) => controller.getBusiness(req, res, next)
+);
+
+/**
+ * PUT /business/profile → simple upsert for frontend (accepts flat fields)
+ */
+router.put(
+  '/profile',
+  (req, res, next) => controller.updateProfile(req, res, next)
+);
+
+/**
  * Export router to be mounted in the main app
  */
 export default router;

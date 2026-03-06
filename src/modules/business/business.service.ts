@@ -177,6 +177,29 @@ export class BusinessService {
   }
 
   /**
+   * Delete a FAQ by ID, scoped to the current tenant
+   */
+  async deleteFAQ(ctx: TenantContext, faqId: string) {
+    const business = await prisma.business.findUnique({
+      where: { tenantId: ctx.tenantId },
+    });
+
+    if (!business) {
+      throw new AppError(404, 'BUSINESS_NOT_FOUND', 'Business not found');
+    }
+
+    const faq = await prisma.fAQ.findUnique({ where: { id: faqId } });
+
+    if (!faq || faq.businessId !== business.id) {
+      throw new AppError(404, 'FAQ_NOT_FOUND', 'FAQ not found');
+    }
+
+    await prisma.fAQ.delete({ where: { id: faqId } });
+    logger.info('FAQ deleted', { tenantId: ctx.tenantId, faqId });
+    return { deleted: true, id: faqId };
+  }
+
+  /**
    * Search FAQs using semantic or keyword search
    *
    * This method is used by the AI reply system

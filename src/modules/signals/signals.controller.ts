@@ -5,10 +5,12 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { SignalsService } from './signals.service';
+import { ReplyService } from '../ai-reply/reply.service';
 import { ExtractSignalsSchema } from './signals.types';
 import { ApiResponse } from '../../shared/types/common.types';
 
 const service = new SignalsService();
+const replyService = new ReplyService();
 
 /**
  * Controller class for signals-related operations.
@@ -81,6 +83,27 @@ export class SignalsController {
       };
 
       res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** List all signals for the tenant (frontend signals table) */
+  async listSignals(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await service.listSignals(req.tenantContext!);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** Generate a reply from an existing signal by ID */
+  async generateReplyFromSignal(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { signalId } = req.params;
+      const result = await service.generateReplyFromSignal(req.tenantContext!, signalId, replyService);
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }

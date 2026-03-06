@@ -125,5 +125,39 @@ export class BusinessController {
       next(error);
     }
   }
+
+  /**
+   * Delete a FAQ by ID (scoped to the current tenant)
+   */
+  async deleteFAQ(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const result = await service.deleteFAQ(req.tenantContext!, id);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /business/profile — accept simple frontend fields and upsert
+   * Maps flat { businessType, description, targetAudience, pricing } to the DB schema
+   */
+  async updateProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { businessType, description, targetAudience, pricing } = req.body;
+      const result = await service.createOrUpdateBusiness(req.tenantContext!, {
+        businessType: businessType || 'OTHER',
+        description: description || '',
+        pricingRanges: { min: 0, max: 0, currency: 'USD' },
+        primaryGoals: ['support', 'sell'],
+        allowedClaims: [],
+        constraints: { targetAudience: targetAudience || '' },
+      });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 

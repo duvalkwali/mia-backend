@@ -92,4 +92,49 @@ export class ReplyController {
       next(error);
     }
   }
+
+  /** List all replies for the tenant (frontend replies table) */
+  async listReplies(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await service.listReplies(req.tenantContext!);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** PATCH /:id/status — approve or reject by status string */
+  async patchStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      let result;
+      if (status === 'APPROVED') {
+        result = await service.approveReply(req.tenantContext!, id);
+      } else if (status === 'REJECTED') {
+        result = await service.rejectReply(req.tenantContext!, id);
+      } else {
+        res.status(400).json({ success: false, error: 'Use APPROVED or REJECTED' });
+        return;
+      }
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** PATCH /:id — update reply text (frontend edit dialog sends { generatedText }) */
+  async patchText(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { generatedText } = req.body;
+      const result = await service.editReply(req.tenantContext!, {
+        replyId: id,
+        editedText: generatedText,
+      });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

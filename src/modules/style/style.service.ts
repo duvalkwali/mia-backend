@@ -74,6 +74,49 @@ export class StyleService {
   }
 
   /**
+   * Upsert style profile from the frontend wizard (PUT /style).
+   * Creates with sensible defaults for required fields not in the frontend form.
+   */
+  async upsertStyleProfile(ctx: TenantContext, input: {
+    tone: 'FRIENDLY' | 'PROFESSIONAL' | 'PLAYFUL' | 'PREMIUM';
+    emojiUsage: 'NONE' | 'LIGHT' | 'FREQUENT';
+    formality: number;
+    signaturePhrases: string[];
+    conversationGoal: string;
+  }) {
+    const existing = await prisma.styleProfile.findUnique({
+      where: { tenantId: ctx.tenantId },
+    });
+
+    if (existing) {
+      return prisma.styleProfile.update({
+        where: { tenantId: ctx.tenantId },
+        data: {
+          tone: input.tone,
+          emojiUsage: input.emojiUsage,
+          formality: input.formality,
+          signaturePhrases: input.signaturePhrases,
+          conversationGoal: input.conversationGoal,
+        },
+      });
+    }
+
+    return prisma.styleProfile.create({
+      data: {
+        tenantId: ctx.tenantId,
+        tone: input.tone,
+        emojiUsage: input.emojiUsage,
+        formality: input.formality,
+        signaturePhrases: input.signaturePhrases,
+        conversationGoal: input.conversationGoal,
+        humorLevel: 'OFF',
+        sentenceLengthPref: 'MEDIUM',
+        ctaStyle: 'SOFT',
+      },
+    });
+  }
+
+  /**
    * Record a learning event when the user
    * approves, edits, or rejects an AI reply.
    */

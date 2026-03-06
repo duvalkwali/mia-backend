@@ -215,4 +215,58 @@ export class SignalsService {
     // Return most recent signal as current state
     return signals[0];
   }
+
+  /**
+   * List all signals for the tenant (used by the frontend signals table).
+   * Joins with contact to return name and externalId.
+   */
+  async listSignals(ctx: TenantContext) {
+    const signals = await prisma.contactSignal.findMany({
+      where: { contact: { tenantId: ctx.tenantId } },
+      include: { contact: true },
+      orderBy: { extractedAt: 'desc' },
+      take: 50,
+    });
+
+    return signals.map((s) => ({
+      id: s.id,
+      contactName: s.contact.name || s.contact.externalId,
+      contactExternalId: s.contact.externalId,
+      intent: s.intent,
+      sentiment: s.sentiment,
+      urgency: s.urgency,
+      funnelStage: s.funnelStage,
+      createdAt: s.extractedAt,
+    }));
+  }
+
+  /**
+   * Generate a reply from an existing signal.
+   * Looks up the signal, finds its contact, then triggers reply generation.
+   */
+  async generateReplyFromSignal(
+    ctx: TenantContext,
+    signalId: string,
+    replyService: { generateReply: (ctx: TenantContext, input: { contactId: string; incomingMessage: string }) => Promise<unknown> }
+  ) {
+    const signal = await prisma.contactSignal.findUnique({
+      where: { id: signalId },
+      include: { contact: true },
+    });
+
+    if (!signal || signal.contact.tenantId !== ctx.tenantId) {
+      throw new AppError(404, 'SIGNAL_NOT_FOUND', 'Signal not found');
+    }
+
+    // Build a summary message from the signal data to drive generation
+    const messageSummary = [
+      signal.keyTopics.join(', '),
+      signal.questionsAsked[0] || '',
+    ].filter(Boolean).join(' ') || 'follow up on previous message';
+
+    return replyService.generateReply(ctx, {
+      contactId: signal.contact.externalId,
+      incomingMessage: messageSummary,
+    });
+  }
 }

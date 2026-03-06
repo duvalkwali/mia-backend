@@ -34,6 +34,16 @@ router.get(
 );
 
 /**
+ * PUT /style
+ * Update (or create) the style profile from the frontend wizard.
+ * Accepts flat frontend fields and maps them to DB enums.
+ */
+router.put(
+  '/',
+  (req, res, next) => controller.updateStyleProfile(req, res, next)
+);
+
+/**
  * POST /style/learn
  * Records feedback on AI replies (approval, edit, rejection).
  * This is how the AI "learns" the user's preferences.

@@ -3,10 +3,14 @@
  * This file configures the Express application with middleware, routes, and error handling.
  */
 
-import express, { Express } from 'express';
+import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { errorHandler } from '@/middleware/errorHandler';
 import logger from '@/config/logger';
+import prisma from '@/config/database';
+import { requireAuth } from '@/middleware/auth';
+import { SignalsService } from '@/modules/signals/signals.service';
+import { ReplyService } from '@/modules/ai-reply/reply.service';
 
 // Import routes
 import authRoutes from '@/modules/auth/auth.routes';
@@ -25,13 +29,18 @@ import whatsappRoutes from '@/modules/webhooks/whatsapp.routes';
 export function createApp(): Express {
   const app = express();
 
-  // Middleware
-  app.use(cors());
+  // Middleware — open CORS for development; tighten via ALLOWED_ORIGINS in production
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+    'http://localhost:3001',
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ];
+  app.use(cors({ origin: allowedOrigins, credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
   // Request logging
-  app.use((req, res, next) => {
+  app.use((req, _res, next) => {
     logger.info('Incoming request', {
       method: req.method,
       path: req.path,
@@ -41,7 +50,7 @@ export function createApp(): Express {
   });
 
   // Health check
-  app.get('/health', (req, res) => {
+  app.get('/health', (_req, res) => {
     res.json({ status: 'healthy', timestamp: new Date().toISOString() });
   });
 
@@ -54,18 +63,56 @@ export function createApp(): Express {
   app.use(`/api/${apiVersion}/replies`, replyRoutes);
   app.use(`/api/${apiVersion}/webhooks/whatsapp`, whatsappRoutes);
 
+  // Dashboard stats endpoint
+  app.get(`/api/${apiVersion}/dashboard`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { tenantId } = req.tenantContext!;
+      const [pendingReplies, faqsCount, costRow] = await Promise.all([
+        prisma.generatedReply.count({ where: { status: 'PENDING', contact: { tenantId } } }),
+        prisma.fAQ.count({ where: { business: { tenantId } } }),
+        prisma.costTracking.aggregate({ where: { tenantId }, _sum: { costUsd: true } }),
+      ]);
+      res.json({ success: true, data: { pendingReplies, faqsCount, costTracked: costRow._sum.costUsd ?? 0 } });
+    } catch (err) {
+      logger.error('Dashboard error', { err });
+      res.status(500).json({ success: false, error: 'Failed to load dashboard' });
+    }
+  });
 
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
-  'http://localhost:5173',
-  'http://localhost:3001',
-];
+  // Playground: extract signal + generate reply in one shot
+  const signalsService = new SignalsService();
+  const replyService = new ReplyService();
 
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+  app.post(`/api/${apiVersion}/playground/extract-signal`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { contactExternalId, platform, messageText } = req.body;
+      const result = await signalsService.extractSignals(req.tenantContext!, {
+        contactExternalId: contactExternalId || 'playground-user',
+        platform: platform || 'WHATSAPP',
+        messageText,
+      });
+      res.json({ success: true, data: result.signals });
+    } catch (err) {
+      logger.error('Playground extract error', { err });
+      res.status(500).json({ success: false, error: 'Signal extraction failed' });
+    }
+  });
+
+  app.post(`/api/${apiVersion}/playground/generate-reply`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { contactExternalId, messageText } = req.body;
+      const result = await replyService.generateReply(req.tenantContext!, {
+        contactId: contactExternalId || 'playground-user',
+        incomingMessage: messageText,
+      });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      logger.error('Playground generate error', { err });
+      res.status(500).json({ success: false, error: 'Reply generation failed' });
+    }
+  });
+
+
 
   // Error handling (must be last)
   app.use(errorHandler);

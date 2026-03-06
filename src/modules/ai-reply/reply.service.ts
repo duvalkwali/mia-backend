@@ -15,6 +15,7 @@ import { GenerateReplyInput, GeneratedReplyData, EditReplyInput } from './reply.
 import { SignalsService } from '../signals/signals.service';
 import { BusinessService } from '../business/business.service';
 import { StyleService } from '../style/style.service';
+import { WhatsAppService } from '../webhooks/whatsapp.service';
 import { PromptBuilder } from './promptBuilder';
 import logger from '../../config/logger';
 
@@ -236,6 +237,28 @@ export class ReplyService {
   }
 
   /**
+   * List all generated replies for the tenant, joined with contact info.
+   * Confidence is scaled to 0-100 for the frontend.
+   */
+  async listReplies(ctx: TenantContext) {
+    const replies = await prisma.generatedReply.findMany({
+      where: { contact: { tenantId: ctx.tenantId } },
+      include: { contact: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    return replies.map((r) => ({
+      id: r.id,
+      generatedText: r.generatedText,
+      confidence: Math.round(r.confidence * 100),
+      status: r.status,
+      contactName: r.contact.name || r.contact.externalId,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  /**
    * Approve a generated reply.
    * Marks the reply status as APPROVED, records a learning event, and updates ephemeral context.
    */
@@ -280,6 +303,22 @@ export class ReplyService {
       tenantId: ctx.tenantId,
       replyId,
     });
+
+    // Auto-send back to WhatsApp if the contact came from that platform
+    if (reply.contact.platform === 'WHATSAPP') {
+      const whatsappService = new WhatsAppService();
+      whatsappService.sendMessage(reply.contact.externalId, reply.generatedText)
+        .then(() => {
+          prisma.generatedReply.update({
+            where: { id: replyId },
+            data: { status: 'SENT', sentAt: new Date() },
+          }).catch(() => {});
+          logger.info('Reply sent to WhatsApp', { replyId, to: reply.contact.externalId });
+        })
+        .catch((err: unknown) => {
+          logger.error('Failed to send reply to WhatsApp', { replyId, error: err });
+        });
+    }
 
     return updated;
   }

@@ -40,11 +40,7 @@ export const env = {
   port: Number(process.env.PORT ?? 3000),
 
   databaseUrl: requireEnv('DATABASE_URL'),
-<<<<<<< HEAD
-  redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
-=======
   redisUrl: redisUrlFromEnv,
->>>>>>> e6b5af3f95b4e44c24f5426a3c148f5de4ace164
 
   ollama: {
     baseUrl: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434/v1',
