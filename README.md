@@ -17,7 +17,7 @@ MIA is an AI-powered backend service designed to generate smart, contextual repl
    - Optional: ngrok only if you need a public webhook tunnel for external integrations
 2. Clone the repository and navigate to the backend project root:
    ```powershell
-   cd c:\Users\bu\Documents\mia-backend\mia-backend
+   cd <path-to-your-repo>\mia-backend
    ```
 3. Install backend dependencies:
    ```powershell
@@ -35,7 +35,7 @@ MIA is an AI-powered backend service designed to generate smart, contextual repl
    - webhook secrets or auth values used by the application
 6. Run Prisma migrations and generate the client:
    ```powershell
-   cd ..\mia-backend
+   cd <path-to-your-repo>\mia-backend
    npx prisma migrate dev --name init
    npx prisma generate
    ```
@@ -50,13 +50,13 @@ From the project root, open two terminal windows or tabs.
 
 Terminal 1: Start the backend
 ```powershell
-cd c:\Users\bu\Documents\mia-backend\mia-backend
+cd <path-to-your-repo>\mia-backend
 npm run dev
 ```
 
 Terminal 2: Start the frontend
 ```powershell
-cd c:\Users\bu\Documents\mia-backend\frontend
+cd <path-to-your-repo>\frontend
 npm run dev
 ```
 
