@@ -5,6 +5,7 @@ import {
   OnboardingQuizInput,
   RecordLearningEventInput,
 } from './style.types';
+import { TemplateCache } from '../ai-reply/templateCache';
 import logger from '../../config/logger';
 
 /**
@@ -12,6 +13,7 @@ import logger from '../../config/logger';
  * Handles persistence and learning logic.
  */
 export class StyleService {
+  private templateCache = new TemplateCache();
 
   /**
    * Create a new style profile during onboarding.
@@ -88,8 +90,9 @@ export class StyleService {
       where: { tenantId: ctx.tenantId },
     });
 
+    let result;
     if (existing) {
-      return prisma.styleProfile.update({
+      result = await prisma.styleProfile.update({
         where: { tenantId: ctx.tenantId },
         data: {
           tone: input.tone,
@@ -99,21 +102,26 @@ export class StyleService {
           conversationGoal: input.conversationGoal,
         },
       });
+    } else {
+      result = await prisma.styleProfile.create({
+        data: {
+          tenantId: ctx.tenantId,
+          tone: input.tone,
+          emojiUsage: input.emojiUsage,
+          formality: input.formality,
+          signaturePhrases: input.signaturePhrases,
+          conversationGoal: input.conversationGoal,
+          humorLevel: 'OFF',
+          sentenceLengthPref: 'MEDIUM',
+          ctaStyle: 'SOFT',
+        },
+      });
     }
 
-    return prisma.styleProfile.create({
-      data: {
-        tenantId: ctx.tenantId,
-        tone: input.tone,
-        emojiUsage: input.emojiUsage,
-        formality: input.formality,
-        signaturePhrases: input.signaturePhrases,
-        conversationGoal: input.conversationGoal,
-        humorLevel: 'OFF',
-        sentenceLengthPref: 'MEDIUM',
-        ctaStyle: 'SOFT',
-      },
-    });
+    // Invalidate cached prompt template so next reply uses the new style
+    await this.templateCache.clearTenantCache(ctx.tenantId);
+
+    return result;
   }
 
   /**

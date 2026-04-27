@@ -21,9 +21,16 @@ async function startServer() {
     await prisma.$connect();
     logger.info('Database connected');
 
-    // Test Redis connection
-    await redisClient.ping();
-    logger.info('Redis connected');
+    // Test Redis connection with timeout (non-blocking - server starts even if Redis fails)
+    try {
+      const redisTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Redis ping timeout')), 3000)
+      );
+      await Promise.race([redisClient.ping(), redisTimeout]);
+      logger.info('Redis connected');
+    } catch (err) {
+      logger.warn('Redis connection failed - server starting without Redis');
+    }
 
     // Start server
     const app = createApp();

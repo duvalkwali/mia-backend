@@ -285,28 +285,12 @@ export class ReplyService {
       },
     });
 
-    // Record style learning event
-    await this.styleService.recordLearningEvent(ctx, {
-      eventType: 'APPROVAL',
-      replyId,
-      originalReply: reply.generatedText,
-    });
+    logger.info('Reply approved', { tenantId: ctx.tenantId, replyId });
 
-    // Update ephemeral context
-    await this.updateEphemeralContext(ctx, reply.contactId, {
-      direction: 'outbound',
-      summary: reply.generatedText.substring(0, 100),
-      timestamp: new Date(),
-    });
-
-    logger.info('Reply approved', {
-      tenantId: ctx.tenantId,
-      replyId,
-    });
-
-    // Auto-send back to WhatsApp if the contact came from that platform
+    // Send to WhatsApp immediately — this is the primary action on approval
     if (reply.contact.platform === 'WHATSAPP') {
       const whatsappService = new WhatsAppService();
+      logger.info('Sending reply to WhatsApp', { replyId, to: reply.contact.externalId });
       whatsappService.sendMessage(reply.contact.externalId, reply.generatedText)
         .then(() => {
           prisma.generatedReply.update({
@@ -316,9 +300,27 @@ export class ReplyService {
           logger.info('Reply sent to WhatsApp', { replyId, to: reply.contact.externalId });
         })
         .catch((err: unknown) => {
-          logger.error('Failed to send reply to WhatsApp', { replyId, error: err });
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error('Failed to send reply to WhatsApp', { replyId, error: msg });
         });
     }
+
+    // Non-critical: record learning event and update context (errors do not block response)
+    this.styleService.recordLearningEvent(ctx, {
+      eventType: 'APPROVAL',
+      replyId,
+      originalReply: reply.generatedText,
+    }).catch((err: unknown) => {
+      logger.warn('Learning event failed (non-critical)', { error: (err as Error)?.message });
+    });
+
+    this.updateEphemeralContext(ctx, reply.contactId, {
+      direction: 'outbound',
+      summary: reply.generatedText.substring(0, 100),
+      timestamp: new Date(),
+    }).catch((err: unknown) => {
+      logger.warn('Ephemeral context update failed (non-critical)', { error: (err as Error)?.message });
+    });
 
     return updated;
   }

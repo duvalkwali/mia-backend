@@ -113,6 +113,21 @@ export function createApp(): Express {
   });
 
 
+  // Root route — friendly response for browser/ngrok visits
+  app.get('/', (_req, res) => {
+    res.json({
+      name: 'MIA Backend API',
+      version: apiVersion,
+      status: 'running',
+      health: '/health',
+      api: `/api/${apiVersion}`,
+    });
+  });
+
+  // 404 handler — clean JSON instead of Express default "Cannot GET X"
+  app.use((_req, res) => {
+    res.status(404).json({ success: false, error: 'Route not found' });
+  });
 
   // Error handling (must be last)
   app.use(errorHandler);

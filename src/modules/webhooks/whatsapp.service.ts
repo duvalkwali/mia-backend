@@ -67,7 +67,8 @@ export class WhatsAppService {
   // src/modules/webhooks/whatsapp.service.ts - Add this method:
 
 async sendMessage(phoneNumber: string, message: string): Promise<void> {
-  const url = `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  const apiUrl = process.env.WHATSAPP_API_URL ?? 'https://graph.facebook.com/v18.0';
+  const url = `${apiUrl}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
   
   const response = await fetch(url, {
     method: 'POST',
