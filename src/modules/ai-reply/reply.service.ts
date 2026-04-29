@@ -260,7 +260,8 @@ export class ReplyService {
 
   /**
    * Approve a generated reply.
-   * Marks the reply status as APPROVED, records a learning event, and updates ephemeral context.
+   * Marks the reply status as APPROVED, sends to WhatsApp (awaited so errors surface),
+   * and records a learning event / updates ephemeral context fire-and-forget.
    */
   async approveReply(ctx: TenantContext, replyId: string) {
     const reply = await prisma.generatedReply.findUnique({
@@ -287,25 +288,34 @@ export class ReplyService {
 
     logger.info('Reply approved', { tenantId: ctx.tenantId, replyId });
 
-    // Send to WhatsApp immediately — this is the primary action on approval
+    // Send to WhatsApp — awaited so the error reaches the HTTP response
+    let whatsappSent = false;
+    let whatsappError: string | null = null;
+
     if (reply.contact.platform === 'WHATSAPP') {
       const whatsappService = new WhatsAppService();
       logger.info('Sending reply to WhatsApp', { replyId, to: reply.contact.externalId });
-      whatsappService.sendMessage(reply.contact.externalId, reply.generatedText)
-        .then(() => {
-          prisma.generatedReply.update({
-            where: { id: replyId },
-            data: { status: 'SENT', sentAt: new Date() },
-          }).catch(() => {});
-          logger.info('Reply sent to WhatsApp', { replyId, to: reply.contact.externalId });
-        })
-        .catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          logger.error('Failed to send reply to WhatsApp', { replyId, error: msg });
+      try {
+        await whatsappService.sendMessage(reply.contact.externalId, reply.generatedText);
+        await prisma.generatedReply.update({
+          where: { id: replyId },
+          data: { status: 'SENT', sentAt: new Date() },
         });
+        whatsappSent = true;
+        logger.info('Reply sent to WhatsApp', { replyId, to: reply.contact.externalId });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const cause = (err as any)?.cause;
+        whatsappError = msg;
+        logger.error('Failed to send reply to WhatsApp', {
+          replyId,
+          error: msg,
+          ...(cause ? { cause: cause instanceof Error ? cause.message : String(cause) } : {}),
+        });
+      }
     }
 
-    // Non-critical: record learning event and update context (errors do not block response)
+    // Non-critical: fire-and-forget
     this.styleService.recordLearningEvent(ctx, {
       eventType: 'APPROVAL',
       replyId,
@@ -322,7 +332,7 @@ export class ReplyService {
       logger.warn('Ephemeral context update failed (non-critical)', { error: (err as Error)?.message });
     });
 
-    return updated;
+    return { ...updated, whatsappSent, whatsappError };
   }
 
   /**

@@ -199,6 +199,29 @@ export class BusinessService {
     return { deleted: true, id: faqId };
   }
 
+  async isAutoReplyEnabled(ctx: TenantContext): Promise<boolean> {
+    const business = await prisma.business.findUnique({
+      where: { tenantId: ctx.tenantId },
+      select: { autoReplyEnabled: true },
+    });
+    return business?.autoReplyEnabled ?? false;
+  }
+
+  async setAutoReply(ctx: TenantContext, enabled: boolean) {
+    const business = await prisma.business.findUnique({
+      where: { tenantId: ctx.tenantId },
+    });
+    if (!business) {
+      throw new AppError(404, 'BUSINESS_NOT_FOUND', 'Create a business profile first');
+    }
+    await prisma.business.update({
+      where: { tenantId: ctx.tenantId },
+      data: { autoReplyEnabled: enabled },
+    });
+    logger.info('Auto-reply setting updated', { tenantId: ctx.tenantId, enabled });
+    return { autoReplyEnabled: enabled };
+  }
+
   /**
    * Search FAQs using semantic or keyword search
    *

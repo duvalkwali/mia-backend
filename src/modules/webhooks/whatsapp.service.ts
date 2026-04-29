@@ -13,12 +13,14 @@
  * - A delivery queue / rate limiter belongs at this level
  */
 import { ReplyService } from '../ai-reply/reply.service';
+import { BusinessService } from '../business/business.service';
 import { TenantContext } from '../../shared/types/common.types';
 import { WhatsAppWebhookPayload } from './whatsapp.types';
 import logger from '../../config/logger';
 
 export class WhatsAppService {
   private replyService = new ReplyService();
+  private businessService = new BusinessService();
 
   /**
    * Handle an incoming webhook payload.
@@ -50,16 +52,27 @@ export class WhatsAppService {
       messageId: message.id,
     });
 
-    // Generate AI reply (does not send to WhatsApp yet)
+    // Generate AI reply
     const reply = await this.replyService.generateReply(ctx, {
       contactId: message.from,
       incomingMessage: message.text.body,
     });
 
-    // Return reply for controller to determine next action (manual approval, auto-send, etc.)
+    // If auto-reply is enabled, approve and send immediately — no dashboard step
+    const autoReply = await this.businessService.isAutoReplyEnabled(ctx);
+    if (autoReply && reply.replyId) {
+      logger.info('Auto-reply enabled — sending immediately', { replyId: reply.replyId });
+      try {
+        await this.replyService.approveReply(ctx, reply.replyId);
+      } catch (err: unknown) {
+        logger.error('Auto-reply send failed', { replyId: reply.replyId, error: (err as Error)?.message });
+      }
+    }
+
     return {
       processed: true,
       replyGenerated: reply,
+      autoReplySent: autoReply,
     };
   }
 
@@ -85,7 +98,9 @@ async sendMessage(phoneNumber: string, message: string): Promise<void> {
   });
 
   if (!response.ok) {
-    throw new Error(`WhatsApp API error: ${await response.text()}`);
+    const body = await response.text();
+    logger.error('WhatsApp API rejected request', { status: response.status, body });
+    throw new Error(`WhatsApp API error ${response.status}: ${body}`);
   }
 }
 }

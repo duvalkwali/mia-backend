@@ -139,6 +139,25 @@ export class BusinessController {
     }
   }
 
+  async getAutoReply(req: Request, res: Response, next: NextFunction) {
+    try {
+      const enabled = await service.isAutoReplyEnabled(req.tenantContext!);
+      res.json({ success: true, data: { autoReplyEnabled: enabled } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async setAutoReply(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { enabled } = req.body;
+      const result = await service.setAutoReply(req.tenantContext!, Boolean(enabled));
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * PUT /business/profile — accept simple frontend fields and upsert
    * Maps flat { businessType, description, targetAudience, pricing } to the DB schema

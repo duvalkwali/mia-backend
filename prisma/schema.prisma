@@ -68,6 +68,7 @@ model Business {
   primaryGoals    String[] // ["sell", "book", "support"]
   constraints     Json?    // { "no_discounts": true, "max_reply_length": 200 }
   allowedClaims   String[] // ["certified", "10 years experience"]
+  autoReplyEnabled Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

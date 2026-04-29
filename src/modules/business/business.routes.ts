@@ -103,6 +103,12 @@ router.put(
   (req, res, next) => controller.updateProfile(req, res, next)
 );
 
+/** GET /business/auto-reply — get current auto-reply setting */
+router.get('/auto-reply', (req, res, next) => controller.getAutoReply(req, res, next));
+
+/** PUT /business/auto-reply — enable or disable auto-reply */
+router.put('/auto-reply', (req, res, next) => controller.setAutoReply(req, res, next));
+
 /**
  * Export router to be mounted in the main app
  */

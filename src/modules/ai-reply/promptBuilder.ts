@@ -110,8 +110,8 @@ Generate ONLY the reply text, no preamble or explanation.`;
     signal: ContactSignal,
     context: any
   ): string {
-    // Select relevant FAQs based on signal topics
-    const relevantFAQs = this.selectRelevantFAQs(business.faqs, signal.keyTopics);
+    // Include all FAQs (up to 10) so the AI always has full knowledge base
+    const relevantFAQs = business.faqs.slice(0, 10);
     const faqSection = relevantFAQs.length > 0
       ? `\n\nRelevant FAQ Answers:\n${relevantFAQs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n')}`
       : '';
@@ -139,23 +139,6 @@ Generate a reply that:
 5. Is ${this.getSentenceLengthGuidance(style.sentenceLengthPref)}
 
 Reply:`;
-  }
-
-  private selectRelevantFAQs(faqs: FAQ[], topics: string[]): FAQ[] {
-    if (topics.length === 0 || faqs.length === 0) return [];
-
-    // Simple topic matching for MVP
-    // In V1, use semantic search with embeddings
-    const scored = faqs.map(faq => {
-      const score = topics.filter(topic => 
-        faq.question.toLowerCase().includes(topic.toLowerCase()) ||
-        faq.tags.some(tag => tag.toLowerCase().includes(topic.toLowerCase()))
-      ).length;
-      return { faq, score };
-    });
-
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, 3).map(item => item.faq);
   }
 
   /**
