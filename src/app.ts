@@ -29,6 +29,20 @@ import whatsappRoutes from '@/modules/webhooks/whatsapp.routes';
 export function createApp(): Express {
   const app = express();
 
+  // ── Request logger — MUST be first so every request is visible in the terminal.
+  // process.stdout.write is a Winston bypass: prints even if the logger is broken.
+  // If you send a WhatsApp message and NOTHING below appears, the tunnel is down.
+  app.use((req, _res, next) => {
+    const line = `[${new Date().toTimeString().slice(0, 8)}] ${req.method} ${req.path}\n`;
+    process.stdout.write(line);
+    logger.info(`→ ${req.method} ${req.path}`, {
+      ip:            req.ip,
+      contentType:   req.headers['content-type'],
+      contentLength: req.headers['content-length'],
+    });
+    next();
+  });
+
   // Middleware — open CORS for development; tighten via ALLOWED_ORIGINS in production
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
     'http://localhost:3001',
@@ -38,16 +52,6 @@ export function createApp(): Express {
   app.use(cors({ origin: allowedOrigins, credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
-
-  // Request logging
-  app.use((req, _res, next) => {
-    logger.info('Incoming request', {
-      method: req.method,
-      path: req.path,
-      ip: req.ip,
-    });
-    next();
-  });
 
   // Health check
   app.get('/health', (_req, res) => {
@@ -86,29 +90,53 @@ export function createApp(): Express {
   app.post(`/api/${apiVersion}/playground/extract-signal`, requireAuth, async (req: Request, res: Response) => {
     try {
       const { contactExternalId, platform, messageText } = req.body;
+      logger.info('Playground: extract-signal request', {
+        tenantId: req.tenantContext!.tenantId,
+        contactId: contactExternalId || 'playground-user',
+        messageLength: messageText?.length,
+      });
       const result = await signalsService.extractSignals(req.tenantContext!, {
         contactExternalId: contactExternalId || 'playground-user',
         platform: platform || 'WHATSAPP',
         messageText,
       });
       res.json({ success: true, data: result.signals });
-    } catch (err) {
-      logger.error('Playground extract error', { err });
-      res.status(500).json({ success: false, error: 'Signal extraction failed' });
+    } catch (err: any) {
+      logger.error('Playground: extract-signal failed', {
+        tenantId: req.tenantContext?.tenantId,
+        error: err?.message,
+        stack: err?.stack,
+      });
+      res.status(500).json({ success: false, error: err?.message || 'Signal extraction failed' });
     }
   });
 
   app.post(`/api/${apiVersion}/playground/generate-reply`, requireAuth, async (req: Request, res: Response) => {
     try {
       const { contactExternalId, messageText } = req.body;
+      logger.info('Playground: generate-reply request', {
+        tenantId: req.tenantContext!.tenantId,
+        contactId: contactExternalId || 'playground-user',
+        messageLength: messageText?.length,
+      });
       const result = await replyService.generateReply(req.tenantContext!, {
         contactId: contactExternalId || 'playground-user',
         incomingMessage: messageText,
       });
+      logger.info('Playground: generate-reply success', {
+        tenantId: req.tenantContext!.tenantId,
+        replyId: result.replyId,
+        confidence: result.confidence,
+      });
       res.json({ success: true, data: result });
-    } catch (err) {
-      logger.error('Playground generate error', { err });
-      res.status(500).json({ success: false, error: 'Reply generation failed' });
+    } catch (err: any) {
+      logger.error('Playground: generate-reply failed', {
+        tenantId: req.tenantContext?.tenantId,
+        error: err?.message,
+        code: err?.code,
+        stack: err?.stack,
+      });
+      res.status(500).json({ success: false, error: err?.message || 'Reply generation failed' });
     }
   });
 

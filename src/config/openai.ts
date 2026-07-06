@@ -15,6 +15,9 @@ const ollamaClient = new OpenAI({
   baseURL: env.ollama.baseUrl,
   // Ollama doesn't require an API key; the SDK requires a non-empty string.
   apiKey: 'ollama',
+  // Without a timeout, a cold-start model load can hang for 10+ minutes.
+  // Set OLLAMA_TIMEOUT_MS in .env to override (e.g. 180000 for 3 min on slow hardware).
+  timeout: env.ollama.timeoutMs,
 });
 
 /**

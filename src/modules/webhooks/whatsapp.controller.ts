@@ -19,6 +19,7 @@ import { WhatsAppService } from './whatsapp.service';
 import { verifyWebhookSignature } from '../../shared/types/crypto';
 import logger from '../../config/logger';
 import prisma from '@/config/database';
+import redisClient from '@/config/redis';
 
 const service = new WhatsAppService();
 
@@ -49,7 +50,24 @@ export class WhatsAppController {
    * 4. Always acknowledge with 200 to Meta to avoid repeated deliveries
    */
   async handleWebhook(req: Request, res: Response, next: NextFunction) {
+    // Direct stdout — fires before Winston, before everything.
+    console.log(`[WEBHOOK] POST received at ${new Date().toISOString()}`);
     try {
+      // Log every incoming webhook so the operator can see traffic in the terminal
+      const wamid: string | undefined = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.id;
+      const senderPhone: string | undefined = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
+      const phoneNumberId: string | undefined = req.body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+      const messageType: string | undefined = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.type;
+
+      logger.info('━━ Webhook received ━━', {
+        wamid,
+        senderPhone,
+        phoneNumberId,
+        messageType,
+        isMessageEvent: !!wamid,
+        hasSignature: !!req.headers['x-hub-signature-256'],
+      });
+
       // Verify signature header (x-hub-signature-256)
       const signature = req.headers['x-hub-signature-256'] as string;
       if (signature) {
@@ -67,15 +85,35 @@ export class WhatsAppController {
         logger.warn('No x-hub-signature-256 header — skipping verification');
       }
 
+      // Deduplication — Meta delivers with at-least-once guarantee.
+      // Only message events carry a wamid; status updates don't, so we skip them.
+      if (wamid) {
+        const key = `wamid:${wamid}`;
+        // SET NX returns null if key already exists (seen before), 'OK' if newly set
+        const isNew = await redisClient.set(key, '1', { EX: 86400, NX: true });
+        if (!isNew) {
+          logger.info('Webhook: duplicate delivery — skipping', { wamid });
+          res.sendStatus(200);
+          return;
+        }
+        logger.info('Webhook: new message, proceeding', { wamid, senderPhone });
+      } else {
+        logger.info('Webhook: no wamid (likely a status update / read receipt) — skipping');
+        res.sendStatus(200);
+        return;
+      }
+
       // Resolve tenantId from payload (mapping logic lives outside controller)
       const tenantId = await this.getTenantIdFromPhone(req.body);
-      
+
       if (!tenantId) {
-        logger.warn('No tenant found for webhook');
+        logger.warn('Webhook: no tenant found — make sure a business profile is set up', { phoneNumberId });
         // Acknowledge to avoid retries; operator should investigate via logs
         res.sendStatus(200);
         return;
       }
+
+      logger.info('Webhook: tenant resolved', { tenantId, phoneNumberId });
 
       const ctx = {
         tenantId,
@@ -87,11 +125,33 @@ export class WhatsAppController {
       // AI reply generation (Ollama) takes 30-120 s, so we fire-and-forget.
       res.sendStatus(200);
 
+      logger.info('Webhook: starting background processing', { tenantId, wamid });
+
+      const SETUP_TIPS: Record<string, string> = {
+        BUSINESS_NOT_FOUND:       'Complete setup → Settings › Business',
+        STYLE_PROFILE_NOT_FOUND:  'Complete setup → Settings › Style',
+        NO_SIGNAL:                'Signal extraction failed — check signals service',
+        AI_ERROR:                 'Ollama may not be running — run: ollama serve',
+      };
+
       service.handleWebhook(ctx, req.body)
-        .then((result) => logger.info('Webhook processed', { result }))
-        .catch((err) => logger.error('Webhook processing failed', { error: err?.message ?? err }));
+        .then((result) => logger.info('Webhook: processing complete', { tenantId, wamid, result }))
+        .catch((err) => {
+          const code = (err as any)?.code as string | undefined;
+          logger.error('Webhook: processing failed', {
+            tenantId,
+            wamid,
+            code: code ?? 'UNKNOWN',
+            error: err?.message ?? String(err),
+            ...(code && SETUP_TIPS[code] ? { tip: SETUP_TIPS[code] } : {}),
+            stack: err?.stack,
+          });
+        });
     } catch (error) {
-      logger.error('Webhook error', { error });
+      logger.error('Webhook: controller error', {
+        error: (error as Error)?.message,
+        stack: (error as Error)?.stack,
+      });
       // Still respond 200 to prevent retries; inspect logs for details
       res.sendStatus(200);
     }

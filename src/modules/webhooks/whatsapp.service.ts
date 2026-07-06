@@ -31,9 +31,9 @@ export class WhatsAppService {
     const change = entry.changes[0];
     const value = change.value;
 
-    // Ignore non-message events early
+    // Ignore non-message events (delivery receipts, read receipts, etc.)
     if (!value.messages || value.messages.length === 0) {
-      logger.info('No messages in webhook payload');
+      logger.info('WhatsApp: no user messages in payload (status update?)', { tenantId: ctx.tenantId });
       return { processed: false };
     }
 
@@ -42,31 +42,53 @@ export class WhatsAppService {
 
     // Only handle plain text messages in MVP
     if (message.type !== 'text') {
-      logger.info('Non-text message received', { type: message.type });
+      logger.info('WhatsApp: non-text message — skipping', {
+        tenantId: ctx.tenantId,
+        from: message.from,
+        type: message.type,
+      });
       return { processed: false };
     }
 
-    logger.info('Processing WhatsApp message', {
+    logger.info('WhatsApp: incoming text message', {
       tenantId: ctx.tenantId,
       from: message.from,
       messageId: message.id,
+      contactName: contact?.profile?.name ?? 'unknown',
+      textLength: message.text.body.length,
     });
 
-    // Generate AI reply
+    // Generate AI reply (signal extraction happens inside)
+    logger.info('WhatsApp: starting signal extraction + reply generation', { tenantId: ctx.tenantId });
     const reply = await this.replyService.generateReply(ctx, {
       contactId: message.from,
       incomingMessage: message.text.body,
     });
 
+    logger.info('WhatsApp: reply generated — queued for review', {
+      tenantId: ctx.tenantId,
+      replyId: reply.replyId,
+      confidence: reply.confidence,
+      status: reply.status,
+    });
+
     // If auto-reply is enabled, approve and send immediately — no dashboard step
     const autoReply = await this.businessService.isAutoReplyEnabled(ctx);
+    logger.info('WhatsApp: auto-reply setting', { tenantId: ctx.tenantId, autoReply });
+
     if (autoReply && reply.replyId) {
-      logger.info('Auto-reply enabled — sending immediately', { replyId: reply.replyId });
+      logger.info('WhatsApp: auto-reply ON — approving and sending immediately', { replyId: reply.replyId });
       try {
         await this.replyService.approveReply(ctx, reply.replyId);
+        logger.info('WhatsApp: auto-reply sent successfully', { replyId: reply.replyId, to: message.from });
       } catch (err: unknown) {
-        logger.error('Auto-reply send failed', { replyId: reply.replyId, error: (err as Error)?.message });
+        logger.error('WhatsApp: auto-reply send failed', { replyId: reply.replyId, error: (err as Error)?.message });
       }
+    } else {
+      logger.info('WhatsApp: auto-reply OFF — reply is PENDING in dashboard', {
+        tenantId: ctx.tenantId,
+        replyId: reply.replyId,
+      });
     }
 
     return {

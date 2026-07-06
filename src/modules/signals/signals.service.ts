@@ -44,14 +44,26 @@ export class SignalsService {
     // Step 1: Try rules-based extraction (FREE)
     const rulesResult = this.rulesExtractor.extract(input.messageText);
 
+    logger.info('Signals: rules extraction result', {
+      tenantId: ctx.tenantId,
+      intent: rulesResult.intent,
+      sentiment: rulesResult.sentiment,
+      urgency: rulesResult.urgency,
+      confidence: rulesResult.confidence.toFixed(2),
+      keyTopics: rulesResult.keyTopics,
+      questionsAsked: rulesResult.questionsAsked,
+      meetsThreshold: rulesResult.confidence >= this.CONFIDENCE_THRESHOLD,
+    });
+
     let finalSignals = rulesResult;
     let extractionMethod: 'rules' | 'ai' | 'hybrid' = 'rules';
     let extractionCost = 0;
 
     // Step 2: If confidence is low, use AI
     if (rulesResult.confidence < this.CONFIDENCE_THRESHOLD) {
-      logger.info('Rules extraction confidence low, falling back to AI', {
+      logger.info('Signals: rules confidence below threshold — falling back to AI', {
         confidence: rulesResult.confidence,
+        threshold: this.CONFIDENCE_THRESHOLD,
         tenantId: ctx.tenantId,
       });
 
@@ -60,11 +72,21 @@ export class SignalsService {
         finalSignals = aiResult.signals;
         extractionCost = aiResult.cost;
         extractionMethod = 'ai';
+        logger.info('Signals: AI extraction complete', {
+          tenantId: ctx.tenantId,
+          intent: finalSignals.intent,
+          sentiment: finalSignals.sentiment,
+        });
       } catch (error) {
         // AI extraction failed, use rules result anyway
-        logger.warn('AI extraction failed, using rules result', { error });
+        logger.warn('Signals: AI extraction failed, using rules result', { error });
         extractionMethod = 'hybrid';
       }
+    } else {
+      logger.info('Signals: rules confidence sufficient — using rules result', {
+        tenantId: ctx.tenantId,
+        confidence: rulesResult.confidence.toFixed(2),
+      });
     }
 
     // Store ONLY structured signals (no raw message)
@@ -96,10 +118,14 @@ export class SignalsService {
       });
     }
 
-    logger.info('Signals extracted', {
+    logger.info('Signals: stored in DB', {
       tenantId: ctx.tenantId,
       contactId: contact.id,
+      signalId: signal.id,
       intent: finalSignals.intent,
+      sentiment: finalSignals.sentiment,
+      urgency: finalSignals.urgency,
+      funnelStage: finalSignals.funnelStage,
       method: extractionMethod,
       cost: extractionCost,
       // NEVER log: messageText

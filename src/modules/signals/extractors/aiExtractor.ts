@@ -5,6 +5,7 @@
  */
 
 import openai, { AI_MODELS, calculateCost } from '../../../config/openai';
+import { env } from '../../../config/env';
 import logger from '../../../config/logger';
 import { ExtractedSignals } from './rulesExtractor';
 
@@ -48,11 +49,13 @@ Return ONLY valid JSON, no other text.`;
 
     try {
       const response = await openai.chat.completions.create({
-        model: AI_MODELS.EXTRACTION, // gpt-4o-mini
+        model: AI_MODELS.EXTRACTION,
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1, // Low temperature for consistent results
+        temperature: 0.1,
         response_format: { type: 'json_object' },
         max_tokens: 300,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(env.ollama.keepAlive !== '5m' && { keep_alive: env.ollama.keepAlive } as any),
       });
 
       const content = response.choices[0].message.content;

@@ -7,6 +7,7 @@
  * ephemeral conversation context for better subsequent responses.
  */
 import openai, { AI_MODELS, calculateCost } from '../../config/openai';
+import { env } from '../../config/env';
 import prisma from '../../config/database';
 import redisClient from '../../config/redis';
 import { AppError } from '../../middleware/errorHandler';
@@ -61,6 +62,15 @@ export class ReplyService {
       throw new AppError(500, 'NO_SIGNAL', 'Failed to extract signals');
     }
 
+    logger.info('Reply: context loaded', {
+      tenantId: ctx.tenantId,
+      contactId: extraction.contactId,
+      intent: currentSignal.intent,
+      sentiment: currentSignal.sentiment,
+      urgency: currentSignal.urgency,
+      funnelStage: currentSignal.funnelStage,
+    });
+
     // 3. Build prompt (uses template caching)
     const prompt = await this.promptBuilder.build(
       business,
@@ -68,6 +78,13 @@ export class ReplyService {
       currentSignal,
       ephemeralContext
     );
+
+    logger.info('Reply: prompt built — calling AI', {
+      tenantId: ctx.tenantId,
+      model: AI_MODELS.GENERATION,
+      systemInstructionLength: prompt.systemInstruction.length,
+      userMessageLength: prompt.userMessage.length,
+    });
 
     // 4. Generate reply using AI (GPT-4o for quality)
     const { generatedText, cost, tokensUsed } = await this.callAI(prompt);
@@ -136,15 +153,20 @@ export class ReplyService {
     cost: number;
     tokensUsed: number;
   }> {
+    const callStart = Date.now();
+    logger.info('AI: calling model', { model: AI_MODELS.GENERATION });
+
     try {
       const response = await openai.chat.completions.create({
-        model: AI_MODELS.GENERATION, // gpt-4o
+        model: AI_MODELS.GENERATION,
         messages: [
           { role: 'system', content: prompt.systemInstruction },
           { role: 'user', content: prompt.userMessage },
         ],
         temperature: 0.7,
         max_tokens: 300,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(env.ollama.keepAlive !== '5m' && { keep_alive: env.ollama.keepAlive } as any),
       });
 
       const content = response.choices[0].message.content;
@@ -159,14 +181,34 @@ export class ReplyService {
         response.usage?.completion_tokens || 0
       );
 
+      logger.info('AI: model response received', {
+        model: AI_MODELS.GENERATION,
+        tokensUsed,
+        latencyMs: Date.now() - callStart,
+        responseLength: content.trim().length,
+      });
+
       return {
         generatedText: content.trim(),
         cost,
         tokensUsed,
       };
     } catch (error: any) {
-      logger.error('AI call failed', { error: error.message });
-      throw new AppError(500, 'AI_ERROR', 'Failed to generate reply');
+      const latencyMs = Date.now() - callStart;
+      const isTimeout = error?.message?.toLowerCase().includes('timeout') || error?.message?.toLowerCase().includes('timed out') || error?.code === 'ETIMEDOUT';
+      logger.error('AI: call failed', {
+        model: AI_MODELS.GENERATION,
+        latencyMs,
+        error: error.message,
+        isTimeout,
+      });
+      throw new AppError(
+        500,
+        'AI_ERROR',
+        isTimeout
+          ? `Ollama timed out after ${Math.round(latencyMs / 1000)}s — run \`ollama serve\` and ensure the model is pulled, or set OLLAMA_TIMEOUT_MS higher`
+          : `AI call failed: ${error.message}`
+      );
     }
   }
 
@@ -255,6 +297,7 @@ export class ReplyService {
       status: r.status,
       contactName: r.contact.name || r.contact.externalId,
       createdAt: r.createdAt,
+      sendError: r.sendError ?? undefined,
     }));
   }
 
@@ -294,9 +337,12 @@ export class ReplyService {
 
     if (reply.contact.platform === 'WHATSAPP') {
       const whatsappService = new WhatsAppService();
+      // Use editedText when the owner corrected the reply before approving,
+      // otherwise fall back to the original AI-generated text.
+      const textToSend = reply.editedText ?? reply.generatedText;
       logger.info('Sending reply to WhatsApp', { replyId, to: reply.contact.externalId });
       try {
-        await whatsappService.sendMessage(reply.contact.externalId, reply.generatedText);
+        await whatsappService.sendMessage(reply.contact.externalId, textToSend);
         await prisma.generatedReply.update({
           where: { id: replyId },
           data: { status: 'SENT', sentAt: new Date() },
@@ -312,6 +358,13 @@ export class ReplyService {
           error: msg,
           ...(cause ? { cause: cause instanceof Error ? cause.message : String(cause) } : {}),
         });
+        // Persist the error so the dashboard can surface it without digging through logs
+        prisma.generatedReply.update({
+          where: { id: replyId },
+          data: { sendError: msg },
+        }).catch((dbErr: unknown) => {
+          logger.warn('Could not persist sendError to DB', { error: (dbErr as Error)?.message });
+        });
       }
     }
 
@@ -326,7 +379,7 @@ export class ReplyService {
 
     this.updateEphemeralContext(ctx, reply.contactId, {
       direction: 'outbound',
-      summary: reply.generatedText.substring(0, 100),
+      summary: (reply.editedText ?? reply.generatedText).substring(0, 100),
       timestamp: new Date(),
     }).catch((err: unknown) => {
       logger.warn('Ephemeral context update failed (non-critical)', { error: (err as Error)?.message });

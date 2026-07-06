@@ -52,5 +52,10 @@ export const env = {
     embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL ?? 'nomic-embed-text',
     maxTokens: Number(process.env.OLLAMA_MAX_TOKENS ?? 300),
     temperature: Number(process.env.OLLAMA_TEMPERATURE ?? 0.4),
+    // Timeout for AI calls — 2 min is generous for CPU inference; bump if needed
+    timeoutMs: Number(process.env.OLLAMA_TIMEOUT_MS ?? 120_000),
+    // How long to keep the model loaded in memory after a request (Ollama-specific)
+    // '24h' avoids the slow cold-start on every request; '5m' is the Ollama default
+    keepAlive: process.env.OLLAMA_KEEP_ALIVE ?? '5m',
   },
 };

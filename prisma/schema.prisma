@@ -141,6 +141,7 @@ model StyleProfile {
   // Relations
   tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   learningEvents    StyleLearningEvent[]
+  learnedRules      LearnedStyleRule[]
 
   @@map("style_profiles")
 }
@@ -196,6 +197,41 @@ enum LearningEventType {
   APPROVAL
   EDIT
   REJECTION
+}
+
+// Accumulated style rules derived from edit history.
+// Rules are injected into the prompt once exampleCount passes a threshold.
+model LearnedStyleRule {
+  id             String       @id @default(uuid())
+  styleProfileId String
+  ruleType       String       // 'vocabulary' | 'tone' | 'structure' | 'cta'
+  rule           String       @db.Text
+  trigger        String?      // context where this applies, e.g. "when customer asks about pricing"
+  ruleHash       String       // normalized hash used to detect duplicate rules
+  confidence     Float        @default(0.3)
+  exampleCount   Int          @default(1)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  styleProfile StyleProfile @relation(fields: [styleProfileId], references: [id], onDelete: Cascade)
+
+  @@map("learned_style_rules")
+  @@index([styleProfileId, active])
+  @@unique([styleProfileId, ruleHash])
+}
+
+// Global list of AI-generic phrases all tenants should avoid.
+// Seeded via prisma/seed.ts. Tenant-independent.
+model GenericAvoidPhrase {
+  id        String   @id @default(uuid())
+  key       String   @unique   // machine identifier: "happy_to_help"
+  phrase    String             // "I'd be happy to help"
+  variants  String[]           // ["Happy to help", "I'm happy to assist"]
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("generic_avoid_phrases")
 }
 
 // ============================================
@@ -301,6 +337,7 @@ model GeneratedReply {
   editedText       String?     @db.Text
   approvedAt       DateTime?
   sentAt           DateTime?
+  sendError        String?     @db.Text  // set when APPROVED but WhatsApp delivery failed
   
   // Metadata
   promptVersion    String      // For A/B testing later
