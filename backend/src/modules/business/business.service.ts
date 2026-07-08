@@ -1,7 +1,7 @@
 import prisma from '../../config/database';
 import { AppError } from '../../middleware/errorHandler';
 import { TenantContext } from '../../shared/types/common.types';
-import { CreateBusinessInput, CreateFAQInput } from './business.types';
+import { CreateBusinessInput, CreateFAQInput, UpdateProfileInput } from './business.types';
 import { EmbeddingService } from './embedding.service';
 import logger from '../../config/logger';
 
@@ -79,6 +79,68 @@ export class BusinessService {
     });
 
     logger.info('Business created', {
+      tenantId: ctx.tenantId,
+      businessId: created.id,
+    });
+
+    return created;
+  }
+
+  /**
+   * Partial upsert for the dashboard profile form (PUT /business/profile).
+   *
+   * Only fields present in the request are written; everything else
+   * (primaryGoals, allowedClaims, other constraints keys) keeps its stored
+   * value. `pricing` free text maps to the canonical `pricingRanges: { text }`
+   * and `targetAudience` is merged into the `constraints` JSON.
+   */
+  async updateProfileFields(ctx: TenantContext, input: UpdateProfileInput) {
+    const existing = await prisma.business.findUnique({
+      where: { tenantId: ctx.tenantId },
+    });
+
+    if (existing) {
+      const data: Record<string, unknown> = {};
+      if (input.businessType) data.businessType = input.businessType;
+      if (input.description !== undefined) data.description = input.description;
+      if (input.pricing !== undefined) data.pricingRanges = { text: input.pricing };
+      if (input.targetAudience !== undefined) {
+        const constraints =
+          existing.constraints && typeof existing.constraints === 'object' && !Array.isArray(existing.constraints)
+            ? (existing.constraints as Record<string, unknown>)
+            : {};
+        data.constraints = { ...constraints, targetAudience: input.targetAudience };
+      }
+
+      const updated = await prisma.business.update({
+        where: { id: existing.id },
+        data,
+      });
+
+      logger.info('Business profile updated', {
+        tenantId: ctx.tenantId,
+        businessId: updated.id,
+        fields: Object.keys(data),
+      });
+
+      return updated;
+    }
+
+    // First save from the dashboard: create with neutral defaults for the
+    // fields the flat form doesn't cover.
+    const created = await prisma.business.create({
+      data: {
+        tenantId: ctx.tenantId,
+        businessType: input.businessType || 'OTHER',
+        description: input.description ?? '',
+        pricingRanges: { text: input.pricing ?? '' },
+        primaryGoals: ['support'],
+        allowedClaims: [],
+        constraints: input.targetAudience !== undefined ? { targetAudience: input.targetAudience } : {},
+      },
+    });
+
+    logger.info('Business profile created', {
       tenantId: ctx.tenantId,
       businessId: created.id,
     });

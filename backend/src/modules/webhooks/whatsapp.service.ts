@@ -16,6 +16,7 @@ import { ReplyService } from '../ai-reply/reply.service';
 import { BusinessService } from '../business/business.service';
 import { TenantContext } from '../../shared/types/common.types';
 import { WhatsAppWebhookPayload } from './whatsapp.types';
+import prisma from '@/config/database';
 import logger from '../../config/logger';
 
 export class WhatsAppService {
@@ -98,31 +99,50 @@ export class WhatsAppService {
     };
   }
 
-  // Send a message back to a WhatsApp user using the Graph API
-  // src/modules/webhooks/whatsapp.service.ts - Add this method:
+  /**
+   * Send a message back to a WhatsApp user using the Graph API.
+   *
+   * Credentials are resolved per tenant (Tenant.whatsappPhoneNumberId /
+   * whatsappAccessToken), falling back to the WHATSAPP_* env vars so the
+   * single-tenant pilot keeps working before onboarding UI exists.
+   */
+  async sendMessage(ctx: TenantContext, phoneNumber: string, message: string): Promise<void> {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: ctx.tenantId },
+      select: { whatsappPhoneNumberId: true, whatsappAccessToken: true },
+    });
 
-async sendMessage(phoneNumber: string, message: string): Promise<void> {
-  const apiUrl = process.env.WHATSAPP_API_URL ?? 'https://graph.facebook.com/v18.0';
-  const url = `${apiUrl}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-  
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: phoneNumber,
-      type: 'text',
-      text: { body: message },
-    }),
-  });
+    const phoneNumberId = tenant?.whatsappPhoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const accessToken = tenant?.whatsappAccessToken ?? process.env.WHATSAPP_ACCESS_TOKEN;
 
-  if (!response.ok) {
-    const body = await response.text();
-    logger.error('WhatsApp API rejected request', { status: response.status, body });
-    throw new Error(`WhatsApp API error ${response.status}: ${body}`);
+    if (!phoneNumberId || !accessToken) {
+      throw new Error(
+        'WhatsApp credentials missing: set Tenant.whatsappPhoneNumberId/whatsappAccessToken ' +
+        'or the WHATSAPP_PHONE_NUMBER_ID/WHATSAPP_ACCESS_TOKEN env vars'
+      );
+    }
+
+    const apiUrl = process.env.WHATSAPP_API_URL ?? 'https://graph.facebook.com/v18.0';
+    const url = `${apiUrl}/${phoneNumberId}/messages`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: phoneNumber,
+        type: 'text',
+        text: { body: message },
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      logger.error('WhatsApp API rejected request', { status: response.status, body, tenantId: ctx.tenantId });
+      throw new Error(`WhatsApp API error ${response.status}: ${body}`);
+    }
   }
-}
 }

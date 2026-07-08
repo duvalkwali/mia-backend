@@ -34,16 +34,13 @@ export const CreateBusinessSchema = z.object({
   /**
    * Pricing information
    * Helps the AI avoid hallucinating unrealistic prices
+   *
+   * Stored as free text: the dashboard exposes a single textarea and the
+   * prompt builder consumes the JSON as-is, so `{ text }` is the canonical
+   * shape across frontend, API, and DB.
    */
   pricingRanges: z.object({
-    // Minimum price the business charges
-    min: z.number().positive(),
-
-    // Maximum price the business charges
-    max: z.number().positive(),
-
-    // Currency code (ISO 4217 format, e.g. "USD", "EUR")
-    currency: z.string().length(3),
+    text: z.string().max(2000),
   }),
 
   /**
@@ -80,6 +77,21 @@ export const CreateBusinessSchema = z.object({
    * Stored as key-value pairs for flexibility
    */
   constraints: z.record(z.any(), z.string()).optional(),
+});
+
+/**
+ * Schema for PUT /business/profile — the dashboard's flat profile form.
+ *
+ * Every field is optional: the controller only overwrites what the request
+ * actually contains, so a partial save never resets other columns
+ * (primaryGoals, allowedClaims, ...) to hardcoded defaults.
+ */
+export const UpdateProfileSchema = z.object({
+  // Empty string = "not chosen yet" in the dashboard select — treated as absent
+  businessType: z.union([z.string().min(2), z.literal('')]).optional(),
+  description: z.string().optional(),
+  targetAudience: z.string().max(500).optional(),
+  pricing: z.string().max(2000).optional(),
 });
 
 /**
@@ -132,6 +144,9 @@ export const CreateFAQSchema = z.object({
 
 // Type representing valid business creation input
 export type CreateBusinessInput = z.infer<typeof CreateBusinessSchema>;
+
+// Type representing a valid partial profile update (PUT /business/profile)
+export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
 
 // Type representing valid FAQ creation input
 export type CreateFAQInput = z.infer<typeof CreateFAQSchema>;

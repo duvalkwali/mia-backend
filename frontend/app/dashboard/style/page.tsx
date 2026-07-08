@@ -50,24 +50,31 @@ const STEPS = [
   },
 ];
 
+// Values are the backend's canonical StyleTone enums — no translation layer
 const TONE_OPTIONS = [
-  {
-    value: "FORMAL",
-    label: "Formal",
-    description: "Professional and structured language",
-    example: '"Thank you for your inquiry. We would be happy to assist you."',
-  },
-  {
-    value: "CASUAL",
-    label: "Casual",
-    description: "Relaxed and conversational",
-    example: '"Hey there! Sure thing, let me help you out with that."',
-  },
   {
     value: "FRIENDLY",
     label: "Friendly",
     description: "Warm and approachable",
     example: '"Hi! Great to hear from you. I\'d love to help you find what you need!"',
+  },
+  {
+    value: "PROFESSIONAL",
+    label: "Professional",
+    description: "Polished and structured language",
+    example: '"Thank you for your inquiry. We would be happy to assist you."',
+  },
+  {
+    value: "PLAYFUL",
+    label: "Playful",
+    description: "Relaxed, casual and conversational",
+    example: '"Hey there! Sure thing, let me help you out with that."',
+  },
+  {
+    value: "PREMIUM",
+    label: "Premium",
+    description: "Refined and exclusive, for high-end brands",
+    example: '"It would be our pleasure to arrange this for you."',
   },
 ];
 
@@ -79,11 +86,11 @@ const FORMALITY_OPTIONS = [
   { value: 5, label: "Very Formal" },
 ];
 
+// Values are the backend's canonical EmojiUsage enums — no translation layer
 const EMOJI_OPTIONS = [
   { value: "NONE", label: "None", description: "No emojis at all", preview: "Thank you for reaching out." },
-  { value: "LOW", label: "Low", description: "Occasional emoji use", preview: "Thanks for reaching out! We'll get back to you soon." },
-  { value: "MODERATE", label: "Moderate", description: "Regular emoji use", preview: "Thanks for reaching out! We'll get back to you soon." },
-  { value: "HIGH", label: "High", description: "Frequent emoji use", preview: "Thanks so much for reaching out! We'll be right with you!" },
+  { value: "LIGHT", label: "Light", description: "Occasional emoji use", preview: "Thanks for reaching out! We'll get back to you soon." },
+  { value: "FREQUENT", label: "Frequent", description: "Frequent emoji use", preview: "Thanks so much for reaching out! We'll be right with you!" },
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -181,7 +188,8 @@ export default function StylePage() {
             tone: (data.tone as string) || "",
             formality: (data.formality as number) || 3,
             emojiUsage: (data.emojiUsage as string) || "",
-            targetAudience: (data.targetAudience as string) || "",
+            // The backend stores the wizard's "target audience" answer in conversationGoal
+            targetAudience: (data.conversationGoal as string) || "",
             signaturePhrases: (data.signaturePhrases as string[]) || [],
             vocabularyPhrases: (vocabPrefs.phrases as VocabPhrase[]) || [],
             avoidPhrases: (vocabPrefs.avoid as string[]) || [],

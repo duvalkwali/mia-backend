@@ -15,6 +15,15 @@ model Tenant {
   name      String
   email     String   @unique
   status    TenantStatus @default(ACTIVE)
+
+  // WhatsApp Cloud API identity — routes incoming webhooks (phone_number_id
+  // → tenant) and holds the per-tenant outbound credential.
+  // DEBT(post-pilot): whatsappAccessToken is stored in plaintext for the
+  // pilot; encrypt at rest with a TOKEN_ENCRYPTION_KEY before onboarding
+  // tenants beyond the pilot (spec: "OAuth tokens (encrypted)").
+  whatsappPhoneNumberId String? @unique
+  whatsappAccessToken   String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -121,7 +130,7 @@ model StyleProfile {
   tone                    StyleTone
   emojiUsage              EmojiUsage
   humorLevel              HumorLevel
-  formality               Int      // 1-10 scale
+  formality               Int      // 1-5 scale (matches the dashboard wizard)
   sentenceLengthPref      SentenceLength
   ctaStyle                CTAStyle
   

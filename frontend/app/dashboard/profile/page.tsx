@@ -55,11 +55,15 @@ export default function ProfilePage() {
     ])
       .then(([profileData, faqsData, autoReplyData]) => {
         if (profileData) {
+          // Backend stores pricing as pricingRanges: { text } and
+          // targetAudience inside the constraints JSON blob
+          const pricingRanges = profileData.pricingRanges as { text?: string } | null;
+          const constraints = profileData.constraints as { targetAudience?: string } | null;
           setProfile({
             businessType: (profileData.businessType as string) || "",
             description: (profileData.description as string) || "",
-            targetAudience: (profileData.targetAudience as string) || "",
-            pricing: (profileData.pricing as string) || "",
+            targetAudience: constraints?.targetAudience || "",
+            pricing: pricingRanges?.text || "",
           });
         }
         if (Array.isArray(faqsData)) {

@@ -159,34 +159,30 @@ export class WhatsAppController {
 
   /**
    * Map webhook payload to a tenant identifier.
-   * Implementation notes:
-   * - In production this should perform a lookup (e.g. DB index on phone number)
-   * - Could also support multi-tenant routing via phone_number_id metadata
-   * - Returns `null` when no match is found so controller can safely ack
+   * Routes on the receiving number's `metadata.phone_number_id`, which is
+   * unique per tenant (`Tenant.whatsappPhoneNumberId @unique`).
+   * Returns `null` when no match is found so controller can safely ack.
    */
   private async getTenantIdFromPhone(payload: any): Promise<string | null> {
-    // Implementation would look up tenant by phone number
-    // For MVP, could use a simple mapping table maintained by ops
-    // TODO: Implement actual mapping in a future task
-
     try {
-    const phoneNumberId = payload.entry[0].changes[0].value.metadata.phone_number_id;
-    
-    // Create a mapping table (for MVP - hardcode or use DB)
-    const tenant = await prisma.tenant.findFirst({
-      where: {
-        // MVP: route to first tenant that has a business profile set up.
-        // Production would map phoneNumberId → tenantId in a lookup table.
-        status: { not: 'SUSPENDED' },
-        business: { isNot: null },
-      },
-    });
-    
-    return tenant?.id || null;
-  } catch (error) {
-    logger.error('Failed to get tenant from phone', { error });
-    return null;
-  }
-   
+      const phoneNumberId = payload.entry[0].changes[0].value.metadata.phone_number_id;
+      if (!phoneNumberId) {
+        logger.warn('Webhook payload has no metadata.phone_number_id');
+        return null;
+      }
+
+      const tenant = await prisma.tenant.findUnique({
+        where: { whatsappPhoneNumberId: phoneNumberId },
+      });
+
+      if (!tenant || tenant.status === 'SUSPENDED') {
+        return null;
+      }
+
+      return tenant.id;
+    } catch (error) {
+      logger.error('Failed to get tenant from phone', { error });
+      return null;
+    }
   }
 }

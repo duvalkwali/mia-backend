@@ -342,7 +342,7 @@ export class ReplyService {
       const textToSend = reply.editedText ?? reply.generatedText;
       logger.info('Sending reply to WhatsApp', { replyId, to: reply.contact.externalId });
       try {
-        await whatsappService.sendMessage(reply.contact.externalId, textToSend);
+        await whatsappService.sendMessage(ctx, reply.contact.externalId, textToSend);
         await prisma.generatedReply.update({
           where: { id: replyId },
           data: { status: 'SENT', sentAt: new Date() },

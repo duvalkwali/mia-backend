@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { BusinessService } from './business.service';
-import { CreateBusinessSchema, CreateFAQSchema } from './business.types';
+import { CreateBusinessSchema, CreateFAQSchema, UpdateProfileSchema } from './business.types';
 import { ApiResponse } from '../../shared/types/common.types';
 
 /**
@@ -160,19 +160,13 @@ export class BusinessController {
 
   /**
    * PUT /business/profile — accept simple frontend fields and upsert
-   * Maps flat { businessType, description, targetAudience, pricing } to the DB schema
+   * Maps flat { businessType, description, targetAudience, pricing } to the DB schema.
+   * Partial: only the fields present in the request are written.
    */
   async updateProfile(req: Request, res: Response, next: NextFunction) {
     try {
-      const { businessType, description, targetAudience, pricing } = req.body;
-      const result = await service.createOrUpdateBusiness(req.tenantContext!, {
-        businessType: businessType || 'OTHER',
-        description: description || '',
-        pricingRanges: { min: 0, max: 0, currency: 'USD' },
-        primaryGoals: ['support', 'sell'],
-        allowedClaims: [],
-        constraints: { targetAudience: targetAudience || '' },
-      });
+      const input = UpdateProfileSchema.parse(req.body);
+      const result = await service.updateProfileFields(req.tenantContext!, input);
       res.json({ success: true, data: result });
     } catch (error) {
       next(error);

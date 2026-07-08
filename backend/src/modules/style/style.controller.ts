@@ -40,6 +40,7 @@ export class StyleController {
     try {
       const body = UpdateStyleProfileSchema.parse(req.body);
 
+      // Legacy frontend values kept for backward compatibility
       const toneMap: Record<string, string> = {
         FORMAL: 'PROFESSIONAL', CASUAL: 'PLAYFUL', FRIENDLY: 'FRIENDLY',
         PROFESSIONAL: 'PROFESSIONAL', PLAYFUL: 'PLAYFUL', PREMIUM: 'PREMIUM',
@@ -49,12 +50,18 @@ export class StyleController {
         HIGH: 'FREQUENT', LIGHT: 'LIGHT', FREQUENT: 'FREQUENT',
       };
 
+      // Absent or empty fields are omitted so the service leaves the stored
+      // value untouched — a partial save never resets other columns.
       const result = await service.upsertStyleProfile(req.tenantContext!, {
-        tone:             (toneMap[body.tone] || 'FRIENDLY') as 'FRIENDLY' | 'PROFESSIONAL' | 'PLAYFUL' | 'PREMIUM',
-        emojiUsage:       (emojiMap[body.emojiUsage] || 'NONE') as 'NONE' | 'LIGHT' | 'FREQUENT',
-        formality:        Number(body.formality) || 3,
-        signaturePhrases: Array.isArray(body.signaturePhrases) ? body.signaturePhrases : [],
-        conversationGoal: body.targetAudience || 'build_rapport',
+        ...(body.tone && {
+          tone: toneMap[body.tone] as 'FRIENDLY' | 'PROFESSIONAL' | 'PLAYFUL' | 'PREMIUM',
+        }),
+        ...(body.emojiUsage && {
+          emojiUsage: emojiMap[body.emojiUsage] as 'NONE' | 'LIGHT' | 'FREQUENT',
+        }),
+        ...(body.formality !== undefined && { formality: body.formality }),
+        ...(Array.isArray(body.signaturePhrases) && { signaturePhrases: body.signaturePhrases }),
+        ...(body.targetAudience && { conversationGoal: body.targetAudience }),
         vocabularyPhrases: body.vocabularyPhrases,
         avoidPhrases:      body.avoidPhrases,
       });

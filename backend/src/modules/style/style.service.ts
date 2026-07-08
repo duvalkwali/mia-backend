@@ -56,25 +56,30 @@ export class StyleService {
     return profile;
   }
 
+  /**
+   * Partial upsert from the frontend wizard (PUT /style).
+   * Fields left undefined are not written, so an update never resets
+   * previously saved values to defaults. Defaults only apply on first create.
+   */
   async upsertStyleProfile(
     ctx: TenantContext,
     input: {
-      tone: 'FRIENDLY' | 'PROFESSIONAL' | 'PLAYFUL' | 'PREMIUM';
-      emojiUsage: 'NONE' | 'LIGHT' | 'FREQUENT';
-      formality: number;
-      signaturePhrases: string[];
-      conversationGoal: string;
+      tone?: 'FRIENDLY' | 'PROFESSIONAL' | 'PLAYFUL' | 'PREMIUM';
+      emojiUsage?: 'NONE' | 'LIGHT' | 'FREQUENT';
+      formality?: number;
+      signaturePhrases?: string[];
+      conversationGoal?: string;
       vocabularyPhrases?: Array<{ id: string; text: string; context?: string; avoidIn?: string }>;
       avoidPhrases?: string[];
     }
   ) {
     const vocabPrefs = this.buildVocabPrefs(input.vocabularyPhrases, input.avoidPhrases);
     const sharedData = {
-      tone: input.tone,
-      emojiUsage: input.emojiUsage,
-      formality: input.formality,
-      signaturePhrases: input.signaturePhrases,
-      conversationGoal: input.conversationGoal,
+      ...(input.tone !== undefined && { tone: input.tone }),
+      ...(input.emojiUsage !== undefined && { emojiUsage: input.emojiUsage }),
+      ...(input.formality !== undefined && { formality: input.formality }),
+      ...(input.signaturePhrases !== undefined && { signaturePhrases: input.signaturePhrases }),
+      ...(input.conversationGoal !== undefined && { conversationGoal: input.conversationGoal }),
       ...(vocabPrefs !== null && { vocabularyPreferences: vocabPrefs }),
     };
 
@@ -87,7 +92,12 @@ export class StyleService {
       : await prisma.styleProfile.create({
           data: {
             tenantId: ctx.tenantId,
-            ...sharedData,
+            tone: input.tone ?? 'FRIENDLY',
+            emojiUsage: input.emojiUsage ?? 'NONE',
+            formality: input.formality ?? 3,
+            signaturePhrases: input.signaturePhrases ?? [],
+            conversationGoal: input.conversationGoal ?? 'build_rapport',
+            ...(vocabPrefs !== null && { vocabularyPreferences: vocabPrefs }),
             humorLevel: 'OFF',
             sentenceLengthPref: 'MEDIUM',
             ctaStyle: 'SOFT',

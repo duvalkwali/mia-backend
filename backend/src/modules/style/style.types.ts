@@ -19,7 +19,7 @@ export const OnboardingQuizSchema = z.object({
   tone: z.enum(['FRIENDLY', 'PROFESSIONAL', 'PLAYFUL', 'PREMIUM']),
   emojiUsage: z.enum(['NONE', 'LIGHT', 'FREQUENT']),
   humorLevel: z.enum(['OFF', 'PLAYFUL', 'SARCASTIC']),
-  formality: z.number().int().min(1).max(10),
+  formality: z.number().int().min(1).max(5), // 1–5 scale, matching the wizard
   sentenceLengthPref: z.enum(['SHORT', 'MEDIUM', 'LONG']),
   ctaStyle: z.enum(['DIRECT', 'SOFT', 'CONSULTATIVE']),
   signaturePhrases: z.array(z.string().max(120)).max(5),
@@ -33,11 +33,21 @@ export const OnboardingQuizSchema = z.object({
 /**
  * Schema for the frontend wizard (PUT /style).
  * Accepts the frontend's field names; the controller maps them to DB enums.
+ *
+ * Every field is optional and absent/empty fields leave the stored value
+ * untouched. Legacy values (FORMAL, CASUAL, LOW, MODERATE, HIGH) are still
+ * accepted for backward compatibility and mapped in the controller.
  */
 export const UpdateStyleProfileSchema = z.object({
-  tone: z.string(),
-  emojiUsage: z.string(),
-  formality: z.number().or(z.string()),
+  tone: z
+    .enum(['FRIENDLY', 'PROFESSIONAL', 'PLAYFUL', 'PREMIUM', 'FORMAL', 'CASUAL'])
+    .or(z.literal(''))
+    .optional(),
+  emojiUsage: z
+    .enum(['NONE', 'LIGHT', 'FREQUENT', 'LOW', 'MODERATE', 'HIGH'])
+    .or(z.literal(''))
+    .optional(),
+  formality: z.coerce.number().int().min(1).max(5).optional(), // 1–5 scale
   signaturePhrases: z.array(z.string()).optional(),
   targetAudience: z.string().optional(),
 
