@@ -22,13 +22,15 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({
-  children,
+  children, adults
 }: Readonly<{
   children: React.ReactNode;
+  adults: React.ReactNode;
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="font-sans antialiased">
+        <p>adults</p>
         <AuthProvider>
           {children}
           <Toaster
