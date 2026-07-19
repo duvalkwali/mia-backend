@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -69,68 +70,24 @@ export default function RepliesPage() {
     text: string;
   }>({ open: false, reply: null, text: "" });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
     api
       .getReplies()
       .then((res: any) => setReplies(Array.isArray(res) ? res : (res.data ?? [])))
-      .catch(() => {
-        // Demo data for display
-        setReplies([
-          {
-            id: "1",
-            generatedText:
-              "Thank you for your interest! Our premium plan starts at $49/month and includes all features. Would you like me to set up a demo?",
-            confidence: 92,
-            status: "PENDING",
-            contactName: "John Smith",
-            createdAt: new Date().toISOString(),
-            originalMessage: "How much does your premium plan cost?",
-          },
-          {
-            id: "2",
-            generatedText:
-              "Hi! Yes, we do offer bulk discounts for orders over 100 units. Let me connect you with our sales team for a custom quote.",
-            confidence: 87,
-            status: "APPROVED",
-            contactName: "Maria Garcia",
-            createdAt: new Date(Date.now() - 3600000).toISOString(),
-            originalMessage: "Do you offer bulk discounts?",
-          },
-          {
-            id: "3",
-            generatedText:
-              "I understand your frustration. Let me escalate this to our support team who can resolve this within 24 hours.",
-            confidence: 78,
-            status: "PENDING",
-            contactName: "Alex Johnson",
-            createdAt: new Date(Date.now() - 7200000).toISOString(),
-            originalMessage: "I've been waiting for my refund for 2 weeks",
-          },
-          {
-            id: "4",
-            generatedText:
-              "Great question! Our API documentation is available at docs.example.com. Here are the main endpoints you'll need...",
-            confidence: 95,
-            status: "EDITED",
-            contactName: "Dev Team",
-            createdAt: new Date(Date.now() - 14400000).toISOString(),
-            originalMessage: "Where can I find your API docs?",
-          },
-          {
-            id: "5",
-            generatedText:
-              "We're sorry to hear about this issue. Our store hours are Mon-Fri 9am-6pm. You can also reach us at support@example.com.",
-            confidence: 65,
-            status: "REJECTED",
-            contactName: "Sarah Wilson",
-            createdAt: new Date(Date.now() - 28800000).toISOString(),
-            originalMessage: "What time do you close today?",
-          },
-        ]);
+      .catch((err: unknown) => {
+        setReplies([]);
+        setError(err instanceof Error ? err.message : "Could not load replies");
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const filteredReplies =
     filter === "ALL" ? replies : replies.filter((r) => r.status === filter);
@@ -206,6 +163,22 @@ export default function RepliesPage() {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold text-foreground">
+            Generated Replies
+          </h1>
+          <p className="text-muted-foreground">
+            Review, approve, edit, or reject AI-generated responses
+          </p>
+        </div>
+        <ErrorState title="Could not load replies" message={error} onRetry={load} />
       </div>
     );
   }

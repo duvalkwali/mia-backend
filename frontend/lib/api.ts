@@ -1,5 +1,9 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
+// The backend exposes /health at the server root, outside /api/v1 —
+// derive its URL from the API base instead of hardcoding a second origin.
+const HEALTH_URL = API_BASE.replace(/\/api\/v\d+\/?$/, "") + "/health";
+
 class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -46,6 +50,16 @@ async function request<T>(
 }
 
 export const api = {
+  // Health — true when the backend process answers, false otherwise (never throws)
+  getHealth: async (): Promise<boolean> => {
+    try {
+      const res = await fetch(HEALTH_URL, { cache: "no-store" });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
   // Auth
   login: (data: { email: string; password: string }) =>
     request<{ token: string; user: Record<string, unknown> }>("/auth/login", {

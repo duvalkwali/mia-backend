@@ -82,9 +82,8 @@ export default function ProfilePage() {
     try {
       await api.updateProfile(profile);
       toast.success("Profile updated successfully");
-    } catch {
-      // Demo mode -- save locally
-      toast.success("Profile updated (demo mode)");
+    } catch (err: any) {
+      toast.error(`Failed to save profile: ${err?.message || "Unknown error"}`);
     } finally {
       setSaving(false);
     }
@@ -99,11 +98,8 @@ export default function ProfilePage() {
       setFaqs([...faqs, added as unknown as Faq]);
       setNewFaq({ question: "", answer: "" });
       toast.success("FAQ added");
-    } catch {
-      // Demo mode -- add locally
-      setFaqs([...faqs, { id: `faq-${Date.now()}`, ...newFaq }]);
-      setNewFaq({ question: "", answer: "" });
-      toast.success("FAQ added (demo mode)");
+    } catch (err: any) {
+      toast.error(`Failed to add FAQ: ${err?.message || "Unknown error"}`);
     } finally {
       setAddingFaq(false);
     }
@@ -122,10 +118,18 @@ export default function ProfilePage() {
     }
   }
 
-  function handleDeleteFaq(id: string, index: number) {
-    if (id) api.deleteFaq(id).catch(() => {});
-    setFaqs(faqs.filter((_, i) => i !== index));
-    toast.success("FAQ removed");
+  async function handleDeleteFaq(id: string, index: number) {
+    if (!id) {
+      toast.error("This FAQ has no server id and cannot be deleted");
+      return;
+    }
+    try {
+      await api.deleteFaq(id);
+      setFaqs(faqs.filter((_, i) => i !== index));
+      toast.success("FAQ removed");
+    } catch (err: any) {
+      toast.error(`Failed to delete FAQ: ${err?.message || "Unknown error"}`);
+    }
   }
 
   if (loading) {

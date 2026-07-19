@@ -21,7 +21,6 @@ import {
   Zap,
   Shield,
   Loader2,
-  Play,
 } from "lucide-react";
 
 export default function AuthPage() {
@@ -34,15 +33,6 @@ export default function AuthPage() {
     password: "",
     businessName: "",
   });
-
-  function loginAsDemo() {
-    login("demo-token-xxxx", {
-      id: "Joe-user-1",
-      email: "demo@mia.ai",
-      businessName: "Joe Corp",
-    });
-    toast.success("Welcome to the demo!");
-  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -135,15 +125,6 @@ export default function AuthPage() {
               </span>
             </div>
           </div>
-
-          <Button
-            onClick={loginAsDemo}
-            variant="outline"
-            className="mb-6 w-full gap-2 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
-          >
-            <Play className="h-4 w-4" />
-            Try Demo &mdash; No Account Needed
-          </Button>
 
           <Tabs defaultValue="login" className="w-full">
             <TabsList className="grid w-full grid-cols-2 bg-secondary">

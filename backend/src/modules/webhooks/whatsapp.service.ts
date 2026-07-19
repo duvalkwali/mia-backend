@@ -17,6 +17,7 @@ import { BusinessService } from '../business/business.service';
 import { TenantContext } from '../../shared/types/common.types';
 import { WhatsAppWebhookPayload } from './whatsapp.types';
 import prisma from '@/config/database';
+import { env } from '@/config/env';
 import logger from '../../config/logger';
 
 export class WhatsAppService {
@@ -112,8 +113,8 @@ export class WhatsAppService {
       select: { whatsappPhoneNumberId: true, whatsappAccessToken: true },
     });
 
-    const phoneNumberId = tenant?.whatsappPhoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const accessToken = tenant?.whatsappAccessToken ?? process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = tenant?.whatsappPhoneNumberId ?? env.whatsapp.phoneNumberId;
+    const accessToken = tenant?.whatsappAccessToken ?? env.whatsapp.accessToken;
 
     if (!phoneNumberId || !accessToken) {
       throw new Error(
@@ -122,8 +123,7 @@ export class WhatsAppService {
       );
     }
 
-    const apiUrl = process.env.WHATSAPP_API_URL ?? 'https://graph.facebook.com/v18.0';
-    const url = `${apiUrl}/${phoneNumberId}/messages`;
+    const url = `${env.whatsapp.apiUrl}/${phoneNumberId}/messages`;
 
     const response = await fetch(url, {
       method: 'POST',

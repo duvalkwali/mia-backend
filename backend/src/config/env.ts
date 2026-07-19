@@ -1,9 +1,24 @@
 import 'dotenv/config';
 
+const nodeEnv = process.env.NODE_ENV ?? 'development';
+const isProduction = nodeEnv === 'production';
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`Missing environment variable: ${name}`);
+  }
+  return value;
+}
+
+/**
+ * Optional while developing, mandatory in production — the app must refuse to
+ * boot half-configured on a public host instead of failing at request time.
+ */
+function requireInProduction(name: string): string | undefined {
+  const value = process.env[name];
+  if (!value && isProduction) {
+    throw new Error(`Missing environment variable required in production: ${name}`);
   }
   return value;
 }
@@ -35,12 +50,36 @@ if (!redisUrlFromEnv) {
   throw new Error('Missing Redis configuration: set REDIS_URL or REDIS_HOST');
 }
 
+const jwtSecret = requireEnv('JWT_SECRET');
+if (isProduction && jwtSecret === 'change-me') {
+  throw new Error(
+    'JWT_SECRET is still the placeholder "change-me" — refusing to boot in production. ' +
+    'Generate one with: openssl rand -hex 32'
+  );
+}
+
 export const env = {
-  nodeEnv: process.env.NODE_ENV ?? 'development',
+  nodeEnv,
+  isProduction,
   port: Number(process.env.PORT ?? 3000),
 
   databaseUrl: requireEnv('DATABASE_URL'),
   redisUrl: redisUrlFromEnv,
+
+  jwt: {
+    secret: jwtSecret,
+    expiry: process.env.JWT_EXPIRY ?? '7d',
+  },
+
+  // WhatsApp Cloud API — fallback credentials for the single-tenant pilot;
+  // per-tenant values live on the Tenant record (see Phase 0.3)
+  whatsapp: {
+    verifyToken: requireInProduction('WHATSAPP_VERIFY_TOKEN'),
+    webhookSecret: requireInProduction('WHATSAPP_WEBHOOK_SECRET'),
+    accessToken: requireInProduction('WHATSAPP_ACCESS_TOKEN'),
+    phoneNumberId: requireInProduction('WHATSAPP_PHONE_NUMBER_ID'),
+    apiUrl: process.env.WHATSAPP_API_URL ?? 'https://graph.facebook.com/v18.0',
+  },
 
   ollama: {
     baseUrl: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434/v1',

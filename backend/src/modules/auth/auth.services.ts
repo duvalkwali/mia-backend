@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '@/config/database';
+import { env } from '@/config/env';
 import { AppError } from '@/middleware/errorHandler';
 import { RegisterInput, LoginInput, AuthResponse } from './auth.types';
 import logger from '../../config/logger';
@@ -25,11 +26,11 @@ import logger from '../../config/logger';
  * - This file CAN throw errors (AppError)
  */
 export class AuthService {
-  // Secret key used to sign and verify JWT tokens
-  private readonly JWT_SECRET = process.env.JWT_SECRET as string;
+  // Secret key used to sign and verify JWT tokens — validated at boot in env.ts
+  private readonly JWT_SECRET = env.jwt.secret;
 
   // How long JWT tokens remain valid
-  private readonly JWT_EXPIRY = process.env.JWT_EXPIRY || '7d';
+  private readonly JWT_EXPIRY = env.jwt.expiry;
 
   // Number of salt rounds used by bcrypt when hashing passwords
   private readonly SALT_ROUNDS = 10;
@@ -171,8 +172,8 @@ export class AuthService {
   ): string {
     return jwt.sign(
       { userId, tenantId, role },
-      this.JWT_SECRET as any,
-      { expiresIn: '7d' }
+      this.JWT_SECRET,
+      { expiresIn: this.JWT_EXPIRY } as jwt.SignOptions
     );
   }
 

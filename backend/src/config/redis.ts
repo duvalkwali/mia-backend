@@ -23,17 +23,23 @@ redisClient.on('connect', () => {
   logger.info('Redis connected');
 });
 
-redisClient.connect();
+// The returned promise rejects when Redis is unreachable — without this catch
+// the rejection is unhandled and crashes the whole process (AggregateError)
+redisClient.connect().catch((err) => {
+  logger.error('Redis: initial connection failed — continuing without Redis', {
+    error: (err as Error)?.message,
+  });
+});
 
 export default redisClient;
 
-// Graceful shutdown
+// Graceful shutdown — quit() throws if the client never connected
 process.on('SIGINT', async () => {
-  await redisClient.quit();
+  await redisClient.quit().catch(() => {});
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  await redisClient.quit();
+  await redisClient.quit().catch(() => {});
   process.exit(0);
 });

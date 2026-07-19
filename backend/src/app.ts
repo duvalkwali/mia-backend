@@ -5,6 +5,7 @@
 
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { errorHandler } from '@/middleware/errorHandler';
 import logger from '@/config/logger';
 import prisma from '@/config/database';
@@ -29,6 +30,10 @@ import whatsappRoutes from '@/modules/webhooks/whatsapp.routes';
 export function createApp(): Express {
   const app = express();
 
+  // Behind nginx (Phase 4) the client address arrives in X-Forwarded-For;
+  // without this, rate limiting would key every request to the proxy's IP
+  app.set('trust proxy', 1);
+
   // ── Request logger — MUST be first so every request is visible in the terminal.
   // process.stdout.write is a Winston bypass: prints even if the logger is broken.
   // If you send a WhatsApp message and NOTHING below appears, the tunnel is down.
@@ -50,7 +55,16 @@ export function createApp(): Express {
     'http://localhost:5173',
   ];
   app.use(cors({ origin: allowedOrigins, credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
-  app.use(express.json({ limit: '10mb' }));
+  app.use(
+    express.json({
+      limit: '10mb',
+      // Keep the exact raw bytes: webhook HMAC signatures are computed over the
+      // wire payload, and re-serialized JSON does not round-trip byte-for-byte
+      verify: (req, _res, buf) => {
+        (req as any).rawBody = buf.toString('utf8');
+      },
+    })
+  );
   app.use(express.urlencoded({ extended: true }));
 
   // Health check
@@ -65,7 +79,16 @@ export function createApp(): Express {
   app.use(`/api/${apiVersion}/style`, styleRoutes);
   app.use(`/api/${apiVersion}/signals`, signalsRoutes);
   app.use(`/api/${apiVersion}/replies`, replyRoutes);
-  app.use(`/api/${apiVersion}/webhooks/whatsapp`, whatsappRoutes);
+
+  // Rate-limit the only unauthenticated POST surface (spec bug 6): Meta retries
+  // are far below 60/min, so real traffic never trips this
+  const webhookLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use(`/api/${apiVersion}/webhooks/whatsapp`, webhookLimiter, whatsappRoutes);
 
   // Dashboard stats endpoint
   app.get(`/api/${apiVersion}/dashboard`, requireAuth, async (req: Request, res: Response) => {

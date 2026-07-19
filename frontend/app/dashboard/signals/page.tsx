@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -35,107 +36,58 @@ interface SignalItem {
   createdAt?: string;
 }
 
+// Keys are the backend's Prisma enums (Sentiment, Urgency, FunnelStage)
 const SENTIMENT_COLORS: Record<string, string> = {
   POSITIVE: "bg-primary/15 text-primary border-primary/30",
   NEUTRAL: "bg-muted text-muted-foreground border-border",
+  HESITANT: "bg-warning/15 text-warning border-warning/30",
   NEGATIVE: "bg-destructive/15 text-destructive border-destructive/30",
-  MIXED: "bg-warning/15 text-warning border-warning/30",
 };
 
 const URGENCY_COLORS: Record<string, string> = {
   LOW: "bg-primary/15 text-primary border-primary/30",
   MEDIUM: "bg-warning/15 text-warning border-warning/30",
   HIGH: "bg-destructive/15 text-destructive border-destructive/30",
-  CRITICAL: "bg-destructive text-destructive-foreground border-destructive",
 };
 
 const FUNNEL_COLORS: Record<string, string> = {
-  AWARENESS: "bg-chart-2/15 text-chart-2 border-chart-2/30",
-  CONSIDERATION: "bg-warning/15 text-warning border-warning/30",
-  DECISION: "bg-chart-5/15 text-chart-5 border-chart-5/30",
-  RETENTION: "bg-primary/15 text-primary border-primary/30",
-  ADVOCACY: "bg-chart-4/15 text-chart-4 border-chart-4/30",
+  LEAD: "bg-chart-2/15 text-chart-2 border-chart-2/30",
+  INTERESTED: "bg-warning/15 text-warning border-warning/30",
+  NEGOTIATING: "bg-chart-5/15 text-chart-5 border-chart-5/30",
+  CLOSED: "bg-primary/15 text-primary border-primary/30",
+  CHURNED: "bg-destructive/15 text-destructive border-destructive/30",
 };
 
 export default function SignalsPage() {
   const [signals, setSignals] = useState<SignalItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [generatingFor, setGeneratingFor] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
     api
       .getSignals()
-      .then((data) => setSignals(data as SignalItem[]))
-      .catch(() => {
-        // Demo data
-        setSignals([
-          {
-            id: "s1",
-            contactName: "John Smith",
-            contactExternalId: "+1234567890",
-            intent: "PURCHASE_INQUIRY",
-            sentiment: "POSITIVE",
-            urgency: "MEDIUM",
-            funnelStage: "DECISION",
-            messageText: "How much does your premium plan cost?",
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: "s2",
-            contactName: "Maria Garcia",
-            contactExternalId: "+0987654321",
-            intent: "SUPPORT_REQUEST",
-            sentiment: "NEGATIVE",
-            urgency: "HIGH",
-            funnelStage: "RETENTION",
-            messageText: "I've been waiting for my refund for 2 weeks",
-            createdAt: new Date(Date.now() - 1800000).toISOString(),
-          },
-          {
-            id: "s3",
-            contactName: "Alex Johnson",
-            contactExternalId: "+1122334455",
-            intent: "INFORMATION_REQUEST",
-            sentiment: "NEUTRAL",
-            urgency: "LOW",
-            funnelStage: "AWARENESS",
-            messageText: "What services do you offer?",
-            createdAt: new Date(Date.now() - 3600000).toISOString(),
-          },
-          {
-            id: "s4",
-            contactName: "Sarah Wilson",
-            contactExternalId: "+5566778899",
-            intent: "COMPLAINT",
-            sentiment: "NEGATIVE",
-            urgency: "CRITICAL",
-            funnelStage: "RETENTION",
-            messageText: "Your product broke after just one week of use!",
-            createdAt: new Date(Date.now() - 5400000).toISOString(),
-          },
-          {
-            id: "s5",
-            contactName: "Dev Team Lead",
-            contactExternalId: "+1231231234",
-            intent: "PARTNERSHIP_INQUIRY",
-            sentiment: "POSITIVE",
-            urgency: "LOW",
-            funnelStage: "CONSIDERATION",
-            messageText: "We'd like to explore a potential integration",
-            createdAt: new Date(Date.now() - 7200000).toISOString(),
-          },
-        ]);
+      .then((data) => setSignals(data as unknown as SignalItem[]))
+      .catch((err: unknown) => {
+        setSignals([]);
+        setError(err instanceof Error ? err.message : "Could not load signals");
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function handleGenerateReply(signalId: string) {
     setGeneratingFor(signalId);
     try {
       await api.generateReplyFromSignal(signalId);
       toast.success("Reply generated! Check the Replies page.");
-    } catch {
-      toast.success("Reply generated! Check the Replies page.");
+    } catch (err: any) {
+      toast.error(`Failed to generate reply: ${err?.message || "Unknown error"}`);
     } finally {
       setGeneratingFor(null);
     }
@@ -145,6 +97,21 @@ export default function SignalsPage() {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold text-foreground">Contact Signals</h1>
+          <p className="text-muted-foreground">
+            Extracted signals from incoming messages with intent, sentiment, and
+            urgency analysis
+          </p>
+        </div>
+        <ErrorState title="Could not load signals" message={error} onRetry={load} />
       </div>
     );
   }
@@ -169,11 +136,7 @@ export default function SignalsPage() {
         />
         <SummaryPill
           label="High Urgency"
-          value={
-            signals.filter(
-              (s) => s.urgency === "HIGH" || s.urgency === "CRITICAL"
-            ).length
-          }
+          value={signals.filter((s) => s.urgency === "HIGH").length}
           colorClass="text-destructive"
         />
         <SummaryPill

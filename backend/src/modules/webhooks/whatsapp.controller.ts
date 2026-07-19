@@ -17,6 +17,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { WhatsAppService } from './whatsapp.service';
 import { verifyWebhookSignature } from '../../shared/types/crypto';
+import { env } from '@/config/env';
 import logger from '../../config/logger';
 import prisma from '@/config/database';
 import redisClient from '@/config/redis';
@@ -33,7 +34,7 @@ export class WhatsAppController {
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
-    if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+    if (mode === 'subscribe' && token === env.whatsapp.verifyToken) {
       logger.info('Webhook verified');
       res.status(200).send(challenge);
     } else {
@@ -68,26 +69,46 @@ export class WhatsAppController {
         hasSignature: !!req.headers['x-hub-signature-256'],
       });
 
-      // Verify signature header (x-hub-signature-256)
-      const signature = req.headers['x-hub-signature-256'] as string;
-      if (signature) {
-        // Use rawBody if captured by middleware, fall back to re-serialised body
-        const rawPayload: string = (req as any).rawBody ?? JSON.stringify(req.body);
-        const isValid = verifyWebhookSignature(
-          rawPayload,
-          signature.replace('sha256=', ''),
-          process.env.WHATSAPP_WEBHOOK_SECRET!
-        );
-        if (!isValid) {
-          logger.warn('Webhook signature mismatch — continuing for dev/test');
+      // Verify signature header (x-hub-signature-256) against the raw request
+      // bytes captured in app.ts. In production a missing or invalid signature
+      // is rejected with 401; warn-and-continue is development-only.
+      const signature = req.headers['x-hub-signature-256'] as string | undefined;
+      const webhookSecret = env.whatsapp.webhookSecret;
+      const rawPayload: string = (req as any).rawBody ?? JSON.stringify(req.body);
+      const isValidSignature =
+        !!signature &&
+        !!webhookSecret &&
+        verifyWebhookSignature(rawPayload, signature.replace('sha256=', ''), webhookSecret);
+
+      if (!isValidSignature) {
+        if (env.isProduction) {
+          logger.warn('Webhook rejected: missing or invalid signature', {
+            hasSignature: !!signature,
+            wamid,
+            phoneNumberId,
+            ip: req.ip,
+          });
+          res.sendStatus(401);
+          return;
         }
-      } else {
-        logger.warn('No x-hub-signature-256 header — skipping verification');
+        logger.warn(
+          signature
+            ? 'Webhook signature mismatch — continuing (development only)'
+            : 'No x-hub-signature-256 header — skipping verification (development only)'
+        );
+      }
+
+      // Only message events carry a wamid; status updates don't, so we skip them.
+      if (!wamid) {
+        logger.info('Webhook: no wamid (likely a status update / read receipt) — skipping');
+        res.sendStatus(200);
+        return;
       }
 
       // Deduplication — Meta delivers with at-least-once guarantee.
-      // Only message events carry a wamid; status updates don't, so we skip them.
-      if (wamid) {
+      // If Redis is down, process WITHOUT dedup rather than dropping the
+      // message: a rare double reply beats silently losing customer messages.
+      try {
         const key = `wamid:${wamid}`;
         // SET NX returns null if key already exists (seen before), 'OK' if newly set
         const isNew = await redisClient.set(key, '1', { EX: 86400, NX: true });
@@ -97,10 +118,11 @@ export class WhatsAppController {
           return;
         }
         logger.info('Webhook: new message, proceeding', { wamid, senderPhone });
-      } else {
-        logger.info('Webhook: no wamid (likely a status update / read receipt) — skipping');
-        res.sendStatus(200);
-        return;
+      } catch (redisErr) {
+        logger.error(
+          'Webhook: dedup unavailable (Redis down) — processing WITHOUT duplicate protection',
+          { wamid, error: (redisErr as Error)?.message }
+        );
       }
 
       // Resolve tenantId from payload (mapping logic lives outside controller)

@@ -270,8 +270,8 @@ export default function StylePage() {
         avoidPhrases: style.avoidPhrases,
       });
       toast.success("Reply style saved successfully!");
-    } catch {
-      toast.success("Reply style saved (demo mode)");
+    } catch (err: any) {
+      toast.error(`Failed to save style: ${err?.message || "Unknown error"}`);
     } finally {
       setSaving(false);
     }

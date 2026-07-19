@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/error-state";
 import {
   Clock,
   DollarSign,
@@ -31,16 +32,35 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [profileDone, setProfileDone] = useState(false);
+  const [health, setHealth] = useState<"checking" | "up" | "down">("checking");
 
-  useEffect(() => {
-    api
-      .getDashboard()
-      .then(setData)
-      .catch(() => {
-        setData({ pendingReplies: 12, costTracked: 4.85, faqsCount: 8 });
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      api.getDashboard(),
+      // A missing profile (404) just means setup isn't done — not a page error
+      api.getProfile().catch(() => null),
+    ])
+      .then(([dashboard, profile]) => {
+        setData(dashboard);
+        setProfileDone(!!profile && !!(profile as { businessType?: string }).businessType);
+      })
+      .catch((err: unknown) => {
+        setData(null);
+        setError(err instanceof Error ? err.message : "Could not load dashboard data");
       })
       .finally(() => setLoading(false));
+
+    setHealth("checking");
+    api.getHealth().then((ok) => setHealth(ok ? "up" : "down"));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -54,33 +74,41 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatsCard
-          title="Pending Replies"
-          value={data?.pendingReplies}
-          loading={loading}
-          icon={<Clock className="h-4 w-4" />}
-          description="Awaiting your review"
-          accentClass="text-warning"
+      {/* Stats Cards — or the real error when the backend is unreachable */}
+      {error ? (
+        <ErrorState
+          title="Could not load dashboard stats"
+          message={error}
+          onRetry={load}
         />
-        <StatsCard
-          title="Cost Tracked"
-          value={data?.costTracked !== undefined ? `$${data.costTracked.toFixed(2)}` : undefined}
-          loading={loading}
-          icon={<DollarSign className="h-4 w-4" />}
-          description="Total API usage cost"
-          accentClass="text-chart-2"
-        />
-        <StatsCard
-          title="FAQs Configured"
-          value={data?.faqsCount}
-          loading={loading}
-          icon={<HelpCircle className="h-4 w-4" />}
-          description="Knowledge base entries"
-          accentClass="text-primary"
-        />
-      </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-3">
+          <StatsCard
+            title="Pending Replies"
+            value={data?.pendingReplies}
+            loading={loading}
+            icon={<Clock className="h-4 w-4" />}
+            description="Awaiting your review"
+            accentClass="text-warning"
+          />
+          <StatsCard
+            title="Cost Tracked"
+            value={data?.costTracked !== undefined ? `$${data.costTracked.toFixed(2)}` : undefined}
+            loading={loading}
+            icon={<DollarSign className="h-4 w-4" />}
+            description="Total API usage cost"
+            accentClass="text-chart-2"
+          />
+          <StatsCard
+            title="FAQs Configured"
+            value={data?.faqsCount}
+            loading={loading}
+            icon={<HelpCircle className="h-4 w-4" />}
+            description="Knowledge base entries"
+            accentClass="text-primary"
+          />
+        </div>
+      )}
 
       {/* Quick actions & info */}
       <div className="grid gap-4 md:grid-cols-2">
@@ -135,7 +163,7 @@ export default function DashboardPage() {
               <SetupStep
                 step={1}
                 label="Configure your business profile"
-                done
+                done={profileDone}
               />
               <SetupStep step={2} label="Set your reply style preferences" />
               <SetupStep step={3} label="Add FAQs to your knowledge base" />
@@ -157,11 +185,13 @@ export default function DashboardPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {/* All four subsystems run inside the one backend process, so they
+              share the real GET /health result — no hardcoded "operational" */}
           <div className="flex flex-wrap items-center gap-4">
-            <StatusPill label="API" status="operational" />
-            <StatusPill label="Signal Extraction" status="operational" />
-            <StatusPill label="Reply Generation" status="operational" />
-            <StatusPill label="WhatsApp Integration" status="operational" />
+            <StatusPill label="API" health={health} />
+            <StatusPill label="Signal Extraction" health={health} />
+            <StatusPill label="Reply Generation" health={health} />
+            <StatusPill label="WhatsApp Integration" health={health} />
           </div>
         </CardContent>
       </Card>
@@ -257,31 +287,29 @@ function SetupStep({
 
 function StatusPill({
   label,
-  status,
+  health,
 }: {
   label: string;
-  status: "operational" | "degraded" | "down";
+  health: "checking" | "up" | "down";
 }) {
   const colors = {
-    operational: "bg-primary/20 text-primary",
-    degraded: "bg-warning/20 text-warning",
+    up: "bg-primary/20 text-primary",
+    checking: "bg-warning/20 text-warning",
     down: "bg-destructive/20 text-destructive",
+  };
+  const dot = {
+    up: "bg-primary",
+    checking: "bg-warning",
+    down: "bg-destructive",
   };
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ${colors[status]}`}
+      className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ${colors[health]}`}
     >
-      <div
-        className={`h-1.5 w-1.5 rounded-full ${
-          status === "operational"
-            ? "bg-primary"
-            : status === "degraded"
-              ? "bg-warning"
-              : "bg-destructive"
-        }`}
-      />
+      <div className={`h-1.5 w-1.5 rounded-full ${dot[health]}`} />
       {label}
+      {health === "down" && <span className="opacity-80">— down</span>}
     </div>
   );
 }

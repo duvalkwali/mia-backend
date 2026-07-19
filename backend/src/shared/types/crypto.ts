@@ -9,11 +9,17 @@ export function verifyWebhookSignature(
     .createHmac('sha256', secret)
     .update(payload)
     .digest('hex');
-  
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
-  );
+
+  const signatureBuf = Buffer.from(signature);
+  const expectedBuf = Buffer.from(expectedSignature);
+
+  // timingSafeEqual throws RangeError on length mismatch — an attacker-supplied
+  // malformed header must yield `false`, never crash the handler
+  if (signatureBuf.length !== expectedBuf.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(signatureBuf, expectedBuf);
 }
 
 export function generateRandomToken(length: number = 32): string {
